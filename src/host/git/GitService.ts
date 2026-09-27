@@ -1,4 +1,6 @@
-import simpleGit, { SimpleGit } from 'simple-git';
+import * as vscode from 'vscode';
+import { SimpleGit } from 'simple-git';
+import { createGit } from './gitClient';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
@@ -58,7 +60,7 @@ export class GitService {
   private _pendingDetachedTag: string | undefined;
 
   constructor(public readonly repoId: string, public readonly rootPath: string) {
-    this.git = simpleGit(rootPath);
+    this.git = createGit(rootPath);
   }
 
   setPendingDetachedTag(tagName: string | undefined): void {
@@ -721,7 +723,7 @@ export class GitService {
     return result;
   }
 
-  async getCommitFiles(hash: string, knownParents?: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number }>> {
+  async getCommitFiles(hash: string, knownParents?: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
     // For merge commits, diff-tree uses combined diff and omits most files.
     // Diff against first parent instead to get the full file list.
     let parents = knownParents;
@@ -841,6 +843,22 @@ export class GitService {
       const raw = await this.git.raw(['show', hash, '--stat', '--patch', '--format=']);
       return raw.length > maxChars ? raw.slice(0, maxChars) + '\n...[diff truncated]' : raw;
     } catch { return ''; }
+  }
+
+  /** What a PR from `head` into `base` would change — `base...head` (three dots) diffs against their merge base, the same view forges show, so commits that landed on `base` meanwhile don't show up as reverted. */
+  async getBranchDiff(base: string, head: string, maxChars = 8000): Promise<string> {
+    try {
+      const raw = await this.git.raw(['diff', '--stat', '--patch', `${base}...${head}`]);
+      return raw.length > maxChars ? raw.slice(0, maxChars) + '\n...[diff truncated]' : raw;
+    } catch { return ''; }
+  }
+
+  /** Full messages (subject + body) of `git log base..head`, oldest first. */
+  async getCommitMessagesBetween(base: string, head: string, limit = 100): Promise<string[]> {
+    try {
+      const raw = await this.git.raw(['log', '--reverse', `--max-count=${limit}`, '--format=%B%x00', `${base}..${head}`]);
+      return raw.split('\0').map(m => m.trim()).filter(Boolean);
+    } catch { return []; }
   }
 
   async getCombinedFiles(hashes: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
@@ -1062,8 +1080,7 @@ export class GitService {
       if (notStageable.length > 0) {
         const names = notStageable.map(p => path.basename(p)).join(', ');
         throw new Error(
-          `Cannot stage ${names}: the submodule has uncommitted changes but no new commit. ` +
-          `Commit inside the submodule first, then stage the pointer here.`
+          vscode.l10n.t('Cannot stage {0}: the submodule has uncommitted changes but no new commit. Commit inside the submodule first, then stage the pointer here.', names)
         );
       }
       await this.git.raw(['add', '--', ...gitlinkPaths]);
@@ -1097,8 +1114,7 @@ export class GitService {
       if (notStageable.length > 0) {
         const names = notStageable.map(p => path.basename(p)).join(', ');
         throw new Error(
-          `Cannot stage ${names}: the submodule has uncommitted changes but no new commit. ` +
-          `Commit inside the submodule first, then stage the pointer here.`
+          vscode.l10n.t('Cannot stage {0}: the submodule has uncommitted changes but no new commit. Commit inside the submodule first, then stage the pointer here.', names)
         );
       }
     }
@@ -1269,7 +1285,7 @@ export class GitService {
     // `rebase --continue` opens an editor for the commit being replayed. core.editor=true
     // is the no-op shell builtin, so the stored message is accepted unchanged and the
     // command never blocks — simple-git needs allowUnsafeEditor to let the override past.
-    await simpleGit(this.rootPath, { unsafe: { allowUnsafeEditor: true } })
+    await createGit(this.rootPath, { unsafe: { allowUnsafeEditor: true } })
       .raw(['-c', 'core.editor=true', 'rebase', '--continue']);
   }
 
@@ -1441,29 +1457,29 @@ export class GitService {
   async pull(): Promise<string> {
     const vsRepo = this.vsRepo();
     if (vsRepo && vsRepo.state.remotes.length > 0) {
-      if (!vsRepo.state.HEAD?.upstream) return 'No remote tracking branch — skipped';
+      if (!vsRepo.state.HEAD?.upstream) return vscode.l10n.t('No remote tracking branch — skipped');
       await vsRepo.pull();
-      return 'pulled';
+      return vscode.l10n.t('pulled');
     }
     const tracking = await this.git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).catch(() => '');
-    if (!tracking.trim()) return 'No remote tracking branch — skipped';
+    if (!tracking.trim()) return vscode.l10n.t('No remote tracking branch — skipped');
     const result = await this.git.pull();
-    return `${result.summary.changes} changes, ${result.summary.insertions} insertions, ${result.summary.deletions} deletions`;
+    return vscode.l10n.t('{0} files changed, {1} insertions, {2} deletions', result.summary.changes, result.summary.insertions, result.summary.deletions);
   }
 
   async pullRebase(): Promise<string> {
     const vsRepo = this.vsRepo();
     if (vsRepo && vsRepo.state.remotes.length > 0) {
-      if (!vsRepo.state.HEAD?.upstream) return 'No remote tracking branch — skipped';
+      if (!vsRepo.state.HEAD?.upstream) return vscode.l10n.t('No remote tracking branch — skipped');
       const upstream = vsRepo.state.HEAD.upstream;
       await vsRepo.fetch();
       await vsRepo.rebase(`${upstream.remote}/${upstream.name}`);
-      return 'pulled (rebase)';
+      return vscode.l10n.t('pulled (rebase)');
     }
     const tracking = (await this.git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).catch(() => '')).trim();
-    if (!tracking) return 'No remote tracking branch — skipped';
+    if (!tracking) return vscode.l10n.t('No remote tracking branch — skipped');
     await this.git.raw(['pull', '--rebase']);
-    return 'pulled (rebase)';
+    return vscode.l10n.t('pulled (rebase)');
   }
 
   async fetchAll(): Promise<void> {
@@ -1703,7 +1719,7 @@ export class GitService {
     const paths = [...new Set([oldPath, filePath].filter((p): p is string => Boolean(p)))];
     const patch = await this.git.raw(['diff', '--binary', '--find-renames', base, hash, '--', ...paths]);
     if (!patch.trim()) {
-      throw new Error(`No changes found for ${filePath} in ${hash.slice(0, 8)}`);
+      throw new Error(vscode.l10n.t('No changes found for {0} in {1}', filePath, hash.slice(0, 8)));
     }
 
     const tmpDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitcharm-cherry-pick-file-'));
@@ -1721,7 +1737,7 @@ export class GitService {
         try {
           await this.git.raw(['apply', '--binary', '--whitespace=fix', patchPath]);
         } catch (fallbackErr) {
-          throw new Error(`Failed to cherry-pick selected changes: ${fallbackErr}`);
+          throw new Error(vscode.l10n.t('Failed to cherry-pick selected changes: {0}', String(fallbackErr)));
         }
       }
     } finally {
@@ -2128,7 +2144,7 @@ export class GitService {
   async pushSubmodule(): Promise<void> {
     const status = await this.git.status();
     if (status.detached) {
-      throw new Error('Submodule is in detached HEAD — checkout a branch before pushing.');
+      throw new Error(vscode.l10n.t('Submodule is in detached HEAD — checkout a branch before pushing.'));
     }
     await this.push();
   }
@@ -2138,7 +2154,7 @@ export class GitService {
     if (status.detached) {
       // In detached HEAD: fetch then checkout the latest commit on the tracked ref.
       await this.git.fetch();
-      return 'fetched (detached HEAD — use Update Submodule to advance to a new commit)';
+      return vscode.l10n.t('fetched (detached HEAD — use Update Submodule to advance to a new commit)');
     }
     return rebase ? this.pullRebase() : this.pull();
   }

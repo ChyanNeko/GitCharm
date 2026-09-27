@@ -1,6 +1,8 @@
 import * as vscode from 'vscode';
 import { getWebviewHtml } from '../utils/webviewHtml';
 import type { HostToAiExplainMsg } from '../types/messages';
+import { panelIcon } from '../utils/panelIcon';
+import { webviewReadyGate } from '../utils/webviewReadyGate';
 
 const TAB_TITLE_MAX_LENGTH = 40;
 
@@ -28,7 +30,8 @@ export function openAiExplainDetail(
   extensionUri: vscode.Uri,
   subject: AiExplainSubject,
   modelLabel: string,
-  generate: () => Promise<{ explanation?: string; error?: string }>,
+  /** `onProgress` receives the explanation generated so far, while the AI is still writing it. */
+  generate: (onProgress: (explanationSoFar: string) => void) => Promise<{ explanation?: string; error?: string }>,
 ): void {
   let panel = panels.get(subject.key);
   if (panel) {
@@ -36,20 +39,22 @@ export function openAiExplainDetail(
   } else {
     panel = vscode.window.createWebviewPanel(
       'gitcharm.aiExplainDetail',
-      `AI Explain — ${truncateTitle(subject.title)}`,
+      vscode.l10n.t('AI Explain — {0}', truncateTitle(subject.title)),
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [extensionUri] },
     );
-    panel.iconPath = new vscode.ThemeIcon('sparkle');
+    panel.iconPath = panelIcon(extensionUri, 'sparkle');
     panel.webview.html = getWebviewHtml(panel.webview, extensionUri, 'aiExplainDetail', panel.title);
     panel.onDidDispose(() => panels.delete(subject.key));
     panels.set(subject.key, panel);
   }
 
-  const post = (m: HostToAiExplainMsg) => panel!.webview.postMessage(m);
+  // Same gate for a reused panel — its client is already READY, so messages go straight through.
+  const gate = webviewReadyGate<HostToAiExplainMsg>(panel);
+  const post = (m: HostToAiExplainMsg) => gate.post(m);
   post({ type: 'AIEXPLAIN_INIT', subjectKind: subject.kind, subjectTitle: subject.title, subjectSubtitle: subject.subtitle, modelLabel });
 
-  generate().then(
+  generate(explanation => post({ type: 'AIEXPLAIN_PROGRESS', explanation })).then(
     result => post({ type: 'AIEXPLAIN_RESULT', explanation: result.explanation, error: result.error }),
     (e: unknown) => post({ type: 'AIEXPLAIN_RESULT', error: e instanceof Error ? e.message : String(e) }),
   );

@@ -94,13 +94,50 @@ function toListOptions(filters: PullRequestFilters, page: number): ListPullReque
   };
 }
 
+/** Attaches each PR's checks summary — best-effort, a failed lookup just leaves the list without checks rather than failing it. */
+async function withChecks(provider: PullRequestProvider, owner: string, repo: string, items: PullRequestSummary[]): Promise<PullRequestSummary[]> {
+  try {
+    const summaries = await provider.getChecksSummaries(owner, repo, items);
+    return items.map(pr => {
+      const checks = summaries.get(pr.number);
+      return checks ? { ...pr, checks } : pr;
+    });
+  } catch (err) {
+    logWarn('pullrequest-checks', `Failed to load checks for ${owner}/${repo}`, err instanceof Error ? err.message : String(err));
+    return items;
+  }
+}
+
+/**
+ * Forges record a label/assignee event even when it changes nothing — e.g. Dependabot applies the same labels twice
+ * a second apart, and GitHub's API returns all four "labeled" events while its web UI shows two. Replays the
+ * timeline and drops the no-ops the same way. A label/assignee whose state isn't known yet (it may predate the
+ * first event) is never treated as a no-op, so a real first add/remove is always kept.
+ */
+function dropRedundantEvents(events: PullRequestEvent[]): PullRequestEvent[] {
+  const present = new Map<string, boolean>();
+  const sorted = [...events].sort((a, b) => a.createdAt.localeCompare(b.createdAt));
+  return sorted.filter(event => {
+    const key = event.kind === 'labeled' || event.kind === 'unlabeled' ? event.label && `label:${event.label.name}`
+      : event.kind === 'assigned' || event.kind === 'unassigned' ? event.user && `user:${event.user.id}`
+      : undefined;
+    if (!key) return true;
+    const adds = event.kind === 'labeled' || event.kind === 'assigned';
+    if (present.get(key) === adds) return false;
+    present.set(key, adds);
+    return true;
+  });
+}
+
 const REPO_ACCOUNT_BINDING_KEY = 'gitcharm.pullRequests.repoAccountBindings';
 const REPO_PR_FILTERS_KEY = 'gitcharm.pullRequests.repoFilters';
+const MENTION_CANDIDATES_TTL_MS = 5 * 60 * 1000;
 
 export class PullRequestManager {
   private cache = new Map<string, CacheEntry>();
   /** One provider instance per repo, reused across calls so each provider's own in-memory caches (e.g. GitLab's label-color cache, cached username) actually persist instead of being thrown away and re-fetched on every single request. */
   private providerCache = new Map<string, PullRequestProvider>();
+  private mentionCandidatesCache = new Map<string, { users: PullRequestUser[]; fetchedAt: number }>();
 
   constructor(
     private readonly manager: WorkspaceGitManager,
@@ -238,11 +275,12 @@ export class PullRequestManager {
       const resolved = await this.resolveOrigin(repoId);
       const provider = resolved?.provider ? this.makeProvider(repoId, resolved.provider) : null;
       if (!resolved || !provider) {
-        result = { repoId, repoName, repoColor, connection, pullRequests: [], page: 1, hasMore: false, error: 'Unable to resolve provider for this repo' };
+        result = { repoId, repoName, repoColor, connection, pullRequests: [], page: 1, hasMore: false, error: vscode.l10n.t('Unable to resolve provider for this repo') };
       } else {
         try {
           const { items, hasMore, totalCount } = await provider.listPullRequests(resolved.owner, resolved.repo, toListOptions(filters, 1));
-          result = { repoId, repoName, repoColor, connection, pullRequests: items, page: 1, hasMore, totalCount };
+          const pullRequests = await withChecks(provider, resolved.owner, resolved.repo, items);
+          result = { repoId, repoName, repoColor, connection, pullRequests, page: 1, hasMore, totalCount };
         } catch (err) {
           const message = err instanceof Error ? err.message : String(err);
           logError('pullrequest-list', `Failed to list pull requests for ${repoName}`, message);
@@ -268,9 +306,10 @@ export class PullRequestManager {
     const nextPage = cached.data.page + 1;
     try {
       const { items, hasMore } = await provider.listPullRequests(resolved.owner, resolved.repo, toListOptions(filters, nextPage));
+      const pullRequests = await withChecks(provider, resolved.owner, resolved.repo, items);
       const result: RepoPullRequests = {
         ...cached.data,
-        pullRequests: [...cached.data.pullRequests, ...items],
+        pullRequests: [...cached.data.pullRequests, ...pullRequests],
         page: nextPage,
         hasMore,
       };
@@ -321,9 +360,9 @@ export class PullRequestManager {
 
   async createPullRequest(repoId: string, input: CreatePullRequestInput): Promise<CreatePullRequestResult> {
     const resolved = await this.resolveOrigin(repoId);
-    if (!resolved || !resolved.provider) return { ok: false, error: 'Unable to resolve provider for this repo' };
+    if (!resolved || !resolved.provider) return { ok: false, error: vscode.l10n.t('Unable to resolve provider for this repo') };
     const provider = this.makeProvider(repoId, resolved.provider);
-    if (!provider) return { ok: false, error: 'Unsupported or undetected provider for this repo' };
+    if (!provider) return { ok: false, error: vscode.l10n.t('Unsupported or undetected provider for this repo') };
     const result = await provider.createPullRequest(resolved.owner, resolved.repo, input);
     if (result.ok) this.invalidate(repoId);
     else logError('pullrequest-create', `Failed to create pull request for ${resolved.owner}/${resolved.repo}`, result.error);
@@ -338,10 +377,10 @@ export class PullRequestManager {
   async connectWithPat(repoId: string, token: string, label: string): Promise<{ ok: boolean; error?: string }> {
     const resolved = await this.resolveOrigin(repoId);
     if (!resolved || !resolved.provider || resolved.provider.provider === 'unknown') {
-      return { ok: false, error: 'Unable to resolve a forge provider for this repo' };
+      return { ok: false, error: vscode.l10n.t('Unable to resolve a forge provider for this repo') };
     }
     const { provider: forgeProvider, host } = resolved.provider;
-    if (forgeProvider === 'bitbucket') return { ok: false, error: 'Bitbucket requires an account email in addition to the API token' };
+    if (forgeProvider === 'bitbucket') return { ok: false, error: vscode.l10n.t('Bitbucket requires an account email in addition to the API token') };
     const valid = await validateToken(forgeProvider, host, { apiToken: token });
     if (!valid.ok) {
       logWarn('pullrequest-connect-pat', `Token validation failed for ${host}`, valid.error);
@@ -360,7 +399,7 @@ export class PullRequestManager {
   async connectBitbucket(repoId: string, label: string, credentials: BitbucketCredentials): Promise<{ ok: boolean; error?: string }> {
     const resolved = await this.resolveOrigin(repoId);
     if (!resolved || !resolved.provider || resolved.provider.provider !== 'bitbucket') {
-      return { ok: false, error: 'This repo is not detected as a Bitbucket repository' };
+      return { ok: false, error: vscode.l10n.t('This repo is not detected as a Bitbucket repository') };
     }
     const valid = await validateToken('bitbucket', resolved.host, credentials);
     if (!valid.ok) {
@@ -422,9 +461,9 @@ export class PullRequestManager {
 
   private async resolveProviderAndTarget(repoId: string): Promise<{ owner: string; repo: string; provider: PullRequestProvider } | { error: string }> {
     const resolved = await this.resolveOrigin(repoId);
-    if (!resolved || !resolved.provider) return { error: 'Unable to resolve provider for this repo' };
+    if (!resolved || !resolved.provider) return { error: vscode.l10n.t('Unable to resolve provider for this repo') };
     const provider = this.makeProvider(repoId, resolved.provider);
-    if (!provider) return { error: 'Unsupported or undetected provider for this repo' };
+    if (!provider) return { error: vscode.l10n.t('Unsupported or undetected provider for this repo') };
     return { owner: resolved.owner, repo: resolved.repo, provider };
   }
 
@@ -465,7 +504,7 @@ export class PullRequestManager {
     const target = await this.resolveProviderAndTarget(repoId);
     if ('error' in target) return { items: [], error: target.error };
     const [owner, repo] = targetRepoFullName.split('/');
-    if (!owner || !repo) return { items: [], error: `Invalid repository name: ${targetRepoFullName}` };
+    if (!owner || !repo) return { items: [], error: vscode.l10n.t('Invalid repository name: {0}', targetRepoFullName) };
     try {
       return { items: await target.provider.listBranches(owner, repo) };
     } catch (err) {
@@ -480,7 +519,7 @@ export class PullRequestManager {
     const target = await this.resolveProviderAndTarget(repoId);
     if ('error' in target) return { items: [], error: target.error };
     const [owner, repo] = targetRepoFullName.split('/');
-    if (!owner || !repo) return { items: [], error: `Invalid repository name: ${targetRepoFullName}` };
+    if (!owner || !repo) return { items: [], error: vscode.l10n.t('Invalid repository name: {0}', targetRepoFullName) };
     try {
       return { items: await target.provider.listCollaborators(owner, repo) };
     } catch (err) {
@@ -488,6 +527,23 @@ export class PullRequestManager {
       logError('pullrequest-list-collaborators', `Failed to load collaborators for ${targetRepoFullName}`, message);
       return { items: [], error: message };
     }
+  }
+
+  /** Users offered by the `@` mention autocomplete (and used to resolve Bitbucket's `@{account_id}` mentions
+   * back to names). Same member list as the reviewer picker, but cached briefly per repo: every open detail
+   * panel and the create form ask for it up front, and the member list rarely changes. `targetRepoFullName`
+   * defaults to the repo's own origin (the create form has no PR, hence no base repo, yet). Best-effort —
+   * a failure just means no suggestions, so it's logged but not surfaced. */
+  async listMentionCandidates(repoId: string, targetRepoFullName?: string): Promise<PullRequestUser[]> {
+    const target = await this.resolveProviderAndTarget(repoId);
+    if ('error' in target) return [];
+    const fullName = targetRepoFullName ?? `${target.owner}/${target.repo}`;
+    const key = `${repoId}|${fullName}`;
+    const cached = this.mentionCandidatesCache.get(key);
+    if (cached && Date.now() - cached.fetchedAt < MENTION_CANDIDATES_TTL_MS) return cached.users;
+    const { items, error } = await this.listCollaborators(repoId, fullName);
+    if (!error) this.mentionCandidatesCache.set(key, { users: items, fetchedAt: Date.now() });
+    return items;
   }
 
   async updateReviewers(repoId: string, number: number, userIds: string[]): Promise<ActionResult> {
@@ -513,7 +569,7 @@ export class PullRequestManager {
     const target = await this.resolveProviderAndTarget(repoId);
     if ('error' in target) return { items: [], error: target.error };
     const [owner, repo] = targetRepoFullName.split('/');
-    if (!owner || !repo) return { items: [], error: `Invalid repository name: ${targetRepoFullName}` };
+    if (!owner || !repo) return { items: [], error: vscode.l10n.t('Invalid repository name: {0}', targetRepoFullName) };
     try {
       return { items: await target.provider.listAvailableLabels(owner, repo) };
     } catch (err) {
@@ -624,7 +680,7 @@ export class PullRequestManager {
     const target = await this.resolveProviderAndTarget(repoId);
     if ('error' in target) return { items: [], error: target.error };
     try {
-      return { items: await target.provider.listEvents(target.owner, target.repo, number) };
+      return { items: dropRedundantEvents(await target.provider.listEvents(target.owner, target.repo, number)) };
     } catch (err) {
       const message = err instanceof Error ? err.message : String(err);
       logError('pullrequest-list-events', `Failed to load events for PR #${number}`, message);
@@ -713,13 +769,13 @@ export class PullRequestManager {
    */
   async checkoutPullRequest(repoId: string, pr: PullRequestSummary, mode: 'pr' | 'branch'): Promise<ActionResult & { branchName?: string }> {
     const repo = this.manager.getRepo(repoId);
-    if (!repo) return { ok: false, error: 'Repository not found' };
+    if (!repo) return { ok: false, error: vscode.l10n.t('Repository not found') };
 
     const target = await this.resolveProviderAndTarget(repoId);
     if ('error' in target) return { ok: false, error: target.error };
 
     const remotes = await repo.getRemotesWithUrls();
-    if (remotes.length === 0) return { ok: false, error: 'No remote configured for this repository' };
+    if (remotes.length === 0) return { ok: false, error: vscode.l10n.t('No remote configured for this repository') };
 
     // Spaces become hyphens (e.g. "Riccardo Morandi" -> "riccardo-morandi"); any other non-branch-safe
     // character is also hyphenated. Lowercased throughout — git branch names are case-sensitive and this
@@ -762,17 +818,17 @@ async function validateToken(provider: ForgeProvider, host: string, credentials:
         headers = { Authorization: `token ${credentials.apiToken}` };
         break;
       case 'bitbucket': {
-        if (!credentials.email) return { ok: false, error: 'Bitbucket requires an account email' };
+        if (!credentials.email) return { ok: false, error: vscode.l10n.t('Bitbucket requires an account email') };
         url = 'https://api.bitbucket.org/2.0/user';
         const basic = Buffer.from(`${credentials.email}:${credentials.apiToken}`).toString('base64');
         headers = { Authorization: `Basic ${basic}` };
         break;
       }
       default:
-        return { ok: false, error: `Unsupported provider: ${provider}` };
+        return { ok: false, error: vscode.l10n.t('Unsupported provider: {0}', provider) };
     }
     const res = await fetch(url, { headers });
-    if (!res.ok) return { ok: false, error: `Token validation failed: HTTP ${res.status} ${res.statusText}` };
+    if (!res.ok) return { ok: false, error: vscode.l10n.t('Token validation failed: HTTP {0} {1}', res.status, res.statusText) };
     return { ok: true };
   } catch (err) {
     return { ok: false, error: err instanceof Error ? err.message : String(err) };

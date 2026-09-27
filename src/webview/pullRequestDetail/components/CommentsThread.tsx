@@ -2,11 +2,16 @@ import React, { useEffect, useLayoutEffect, useMemo, useRef, useState } from 're
 import { createPortal } from 'react-dom';
 import type { PullRequestComment, PullRequestCommit, PullRequestEvent } from '../../../host/types/messages';
 import { Codicon } from '../../shared/Codicon';
+import { avatarsEnabled, avatarColor, initials, initialsFontSize } from '../../shared/avatars';
 import { renderMarkdown } from '../../shared/renderMarkdown';
+import { useMentionCandidates } from '../../shared/mentions';
 import { MarkdownEditor } from '../../shared/MarkdownEditor';
 import { formatRelativeTime } from '../../shared/formatRelativeTime';
 import { SkeletonList } from '../../shared/Skeleton';
 import { LabelChip } from './LabelsPanel';
+import * as l10n from '@vscode/l10n';
+import { locale } from '../../shared/l10n';
+import { interpolateNodes } from './interpolateNodes';
 
 interface Props {
   comments: PullRequestComment[];
@@ -31,12 +36,6 @@ type TimelineItem =
   | { kind: 'comment'; date: string; comment: PullRequestComment }
   | { kind: 'commit'; date: string; commit: PullRequestCommit }
   | { kind: 'event'; date: string; event: PullRequestEvent };
-
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
-}
 
 /** Rendered via a portal into document.body, positioned in fixed viewport coordinates from the trigger
  * button's own rect — necessary because CommentRow's rounded-corner container clips overflow, which would
@@ -83,19 +82,19 @@ function CommentActionsMenuPopover({ buttonRect, comment, onClose, onEdit, onDel
       {comment.canEdit && (
         <div className="menu-item" style={css.commentMenuItem} onClick={() => { onClose(); onEdit(); }}>
           <Codicon name="edit" style={{ fontSize: '13px' }} />
-          Edit
+          {l10n.t('Edit')}
         </div>
       )}
       {comment.canHide && (
         <div className="menu-item" style={css.commentMenuItem} onClick={() => { onClose(); onToggleHide(); }}>
           <Codicon name={comment.isHidden ? 'eye' : 'eye-closed'} style={{ fontSize: '13px' }} />
-          {comment.isHidden ? 'Unhide' : 'Hide'}
+          {comment.isHidden ? l10n.t('Unhide') : l10n.t('Hide')}
         </div>
       )}
       {comment.canDelete && (
         <div className="menu-item" style={css.commentMenuItem} onClick={() => { onClose(); onDelete(); }}>
           <Codicon name="trash" style={{ fontSize: '13px', color: '#cf222e' }} />
-          <span style={{ color: '#cf222e' }}>Delete</span>
+          <span style={{ color: '#cf222e' }}>{l10n.t('Delete')}</span>
         </div>
       )}
     </div>,
@@ -121,7 +120,7 @@ function CommentActionsMenu({ comment, onEdit, onDelete, onToggleHide }: {
         className="icon-btn"
         style={css.commentMenuBtn}
         onClick={() => setButtonRect(r => r ? null : btnRef.current!.getBoundingClientRect())}
-        title="Comment actions"
+        title={l10n.t('Comment actions')}
       >
         <Codicon name="ellipsis" style={{ fontSize: '15px' }} />
       </button>
@@ -148,7 +147,8 @@ function CommentRow({ comment, onUpdate, onDelete, onHide, onUnhide }: {
 }) {
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState(comment.body);
-  const html = useMemo(() => renderMarkdown(comment.body), [comment.body]);
+  const mentionCandidates = useMentionCandidates();
+  const html = useMemo(() => renderMarkdown(comment.body, mentionCandidates), [comment.body, mentionCandidates]);
 
   const startEdit = () => {
     setDraft(comment.body);
@@ -164,14 +164,14 @@ function CommentRow({ comment, onUpdate, onDelete, onHide, onUnhide }: {
   return (
     <div style={css.comment}>
       <div style={css.commentHeader}>
-        {comment.authorAvatarUrl
+        {avatarsEnabled && comment.authorAvatarUrl
           ? <img src={comment.authorAvatarUrl} alt={comment.authorName} style={css.avatarImg} />
-          : <span style={css.avatarFallback}>{initials(comment.authorName)}</span>
+          : <span style={{ ...css.avatarFallback, background: avatarColor(comment.authorName) }}>{initials(comment.authorName)}</span>
         }
         <span>
           <strong style={css.commentAuthor}>{comment.authorName}</strong>
         </span>
-        <span style={css.commentDate} title={new Date(comment.createdAt).toLocaleString()}>
+        <span style={css.commentDate} title={new Date(comment.createdAt).toLocaleString(locale)}>
           {formatRelativeTime(comment.createdAt)}
         </span>
         {!editing && (
@@ -185,22 +185,22 @@ function CommentRow({ comment, onUpdate, onDelete, onHide, onUnhide }: {
       </div>
       {editing ? (
         <div style={css.commentEditWrap}>
-          <MarkdownEditor value={draft} onChange={setDraft} placeholder="Edit comment…" minHeight="80px" bare />
+          <MarkdownEditor value={draft} onChange={setDraft} placeholder={l10n.t('Edit comment…')} minHeight="80px" bare />
           <div style={css.commentEditActions}>
-            <button className="icon-btn" style={css.commentEditCancelBtn} onClick={() => setEditing(false)}>Cancel</button>
+            <button className="gc-btn-secondary" style={css.commentEditCancelBtn} onClick={() => setEditing(false)}>{l10n.t('Cancel')}</button>
             <button style={{ ...css.submitBtn, opacity: draft.trim() ? 1 : 0.5 }} disabled={!draft.trim()} onClick={save}>
               <Codicon name="check" style={{ fontSize: '13px' }} />
-              Save
+              {l10n.t('Save')}
             </button>
           </div>
         </div>
       ) : comment.isHidden ? (
         <div style={css.commentHiddenWrap}>
           <Codicon name="eye-closed" style={{ fontSize: '13px', opacity: 0.6 }} />
-          <span style={css.commentHiddenText}>This comment has been minimized.</span>
-          <button className="icon-btn" style={css.commentShowBtn} onClick={onUnhide} title="Show comment">
+          <span style={css.commentHiddenText}>{l10n.t('This comment has been minimized.')}</span>
+          <button className="icon-btn" style={css.commentShowBtn} onClick={onUnhide} title={l10n.t('Show comment')}>
             <Codicon name="unfold" style={{ fontSize: '13px' }} />
-            Show comment
+            {l10n.t('Show comment')}
           </button>
         </div>
       ) : (
@@ -220,19 +220,19 @@ function CommitRow({ commit, onOpen }: { commit: PullRequestCommit; onOpen: () =
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
       onClick={onOpen}
-      title="Open changes for this commit"
+      title={l10n.t('Open changes for this commit')}
     >
       <span style={{ ...css.eventIconDot, color: 'var(--vscode-descriptionForeground)', borderColor: 'var(--vscode-descriptionForeground)' }}>
         <Codicon name="git-commit" style={{ fontSize: '14px' }} />
       </span>
-      {commit.authorAvatarUrl
+      {avatarsEnabled && commit.authorAvatarUrl
         ? <img src={commit.authorAvatarUrl} alt={commit.authorName} title={commit.authorName} style={css.commitAvatarImg} />
-        : <span style={css.commitAvatarFallback} title={commit.authorName}>{initials(commit.authorName)}</span>
+        : <span style={{ ...css.commitAvatarFallback, background: avatarColor(commit.authorName) }} title={commit.authorName}>{initials(commit.authorName)}</span>
       }
       <span style={css.commitAuthor}>{commit.authorName}</span>
       <span style={css.commitLink}>{commit.message.split('\n')[0]}</span>
       <span style={css.commitSha}>{commit.shortSha}</span>
-      <span style={css.commitDate} title={new Date(commit.authoredAt).toLocaleString()}>
+      <span style={css.commitDate} title={new Date(commit.authoredAt).toLocaleString(locale)}>
         {formatRelativeTime(commit.authoredAt)}
       </span>
     </div>
@@ -265,32 +265,39 @@ function eventColor(kind: PullRequestEvent['kind']): string {
   }
 }
 
+/** The whole sentence, actor included, so translators control word order ({0} is always the actor). */
 function eventText(event: PullRequestEvent): React.ReactNode {
+  const actor = <strong>{event.actorName}</strong>;
+  const user = <strong>{event.user?.username}</strong>;
   switch (event.kind) {
     case 'renamed':
       return event.previousTitle
-        ? <>changed the title from <strong>"{event.previousTitle}"</strong> to <strong>"{event.newTitle}"</strong></>
-        : <>changed the title to <strong>"{event.newTitle}"</strong></>;
+        ? interpolateNodes(l10n.t('{0} changed the title from "{1}" to "{2}"'), actor, <strong>{event.previousTitle}</strong>, <strong>{event.newTitle}</strong>)
+        : interpolateNodes(l10n.t('{0} changed the title to "{1}"'), actor, <strong>{event.newTitle}</strong>);
     case 'labeled':
-      return event.label ? <>added the <LabelChip label={event.label} /> label</> : 'added a label';
+      return event.label
+        ? interpolateNodes(l10n.t('{0} added the {1} label'), actor, <LabelChip label={event.label} />)
+        : interpolateNodes(l10n.t('{0} added a label'), actor);
     case 'unlabeled':
-      return event.label ? <>removed the <LabelChip label={event.label} /> label</> : 'removed a label';
+      return event.label
+        ? interpolateNodes(l10n.t('{0} removed the {1} label'), actor, <LabelChip label={event.label} />)
+        : interpolateNodes(l10n.t('{0} removed a label'), actor);
     case 'closed':
-      return 'closed this pull request';
+      return interpolateNodes(l10n.t('{0} closed this pull request'), actor);
     case 'reopened':
-      return 'reopened this pull request';
+      return interpolateNodes(l10n.t('{0} reopened this pull request'), actor);
     case 'merged':
-      return 'merged this pull request';
+      return interpolateNodes(l10n.t('{0} merged this pull request'), actor);
     case 'baseChanged':
-      return <>changed the base branch from <strong>{event.previousBranch}</strong> to <strong>{event.newBranch}</strong></>;
+      return interpolateNodes(l10n.t('{0} changed the base branch from {1} to {2}'), actor, <strong>{event.previousBranch}</strong>, <strong>{event.newBranch}</strong>);
     case 'assigned':
-      return <>assigned <strong>{event.user?.username}</strong></>;
+      return interpolateNodes(l10n.t('{0} assigned {1}'), actor, user);
     case 'unassigned':
-      return <>unassigned <strong>{event.user?.username}</strong></>;
+      return interpolateNodes(l10n.t('{0} unassigned {1}'), actor, user);
     case 'reviewRequested':
-      return <>requested a review from <strong>{event.user?.username}</strong></>;
+      return interpolateNodes(l10n.t('{0} requested a review from {1}'), actor, user);
     case 'reviewRequestRemoved':
-      return <>removed the review request for <strong>{event.user?.username}</strong></>;
+      return interpolateNodes(l10n.t('{0} removed the review request for {1}'), actor, user);
   }
 }
 
@@ -301,14 +308,14 @@ function EventRow({ event }: { event: PullRequestEvent }) {
       <span style={{ ...css.eventIconDot, color, borderColor: color }}>
         <Codicon name={eventIcon(event.kind)} style={{ fontSize: '14px' }} />
       </span>
-      {event.actorAvatarUrl
+      {avatarsEnabled && event.actorAvatarUrl
         ? <img src={event.actorAvatarUrl} alt={event.actorName} title={event.actorName} style={css.commitAvatarImg} />
-        : <span style={css.commitAvatarFallback} title={event.actorName}>{initials(event.actorName)}</span>
+        : <span style={{ ...css.commitAvatarFallback, background: avatarColor(event.actorName) }} title={event.actorName}>{initials(event.actorName)}</span>
       }
       <span style={css.eventText}>
-        <strong>{event.actorName}</strong> {eventText(event)}
+        {eventText(event)}
       </span>
-      <span style={css.commitDate} title={new Date(event.createdAt).toLocaleString()}>
+      <span style={css.commitDate} title={new Date(event.createdAt).toLocaleString(locale)}>
         {formatRelativeTime(event.createdAt)}
       </span>
     </div>
@@ -335,7 +342,7 @@ export function CommentsThread({
       {loading ? (
         <SkeletonList rows={3} />
       ) : timeline.length === 0 ? (
-        <div style={css.empty}>No activity yet.</div>
+        <div style={css.empty}>{l10n.t('No activity yet.')}</div>
       ) : (
         <div style={css.timelineWrap}>
           <div style={css.timelineThread} />
@@ -362,14 +369,14 @@ export function CommentsThread({
       {commentActionError && <div style={css.errorText}>{commentActionError}</div>}
 
       <div style={css.form}>
-        <MarkdownEditor value={draft} onChange={setDraft} placeholder="Leave a comment…" minHeight="80px" />
+        <MarkdownEditor value={draft} onChange={setDraft} placeholder={l10n.t('Leave a comment…')} minHeight="80px" />
       </div>
 
       <div style={css.actionsRow}>
         {canClose && (
-          <button className="icon-btn" style={css.closeBtn} disabled={closing} onClick={onClose}>
+          <button className="gc-btn-secondary" style={css.closeBtn} disabled={closing} onClick={onClose}>
             <Codicon name="git-pull-request-closed" style={{ fontSize: '13px', color: '#cf222e' }} />
-            {closing ? 'Closing…' : 'Close Pull Request'}
+            {closing ? l10n.t('Closing…') : l10n.t('Close Pull Request')}
           </button>
         )}
         <div style={{ flex: 1 }} />
@@ -379,7 +386,7 @@ export function CommentsThread({
           onClick={() => { onPostComment(draft.trim()); setDraft(''); }}
         >
           <Codicon name="comment" style={{ fontSize: '13px' }} />
-          {posting ? 'Posting…' : 'Comment'}
+          {posting ? l10n.t('Posting…') : l10n.t({ message: 'Comment', comment: ['Button: post a comment'] })}
         </button>
       </div>
       {closeError && <div style={css.errorText}>{closeError}</div>}
@@ -419,7 +426,7 @@ const css = {
   avatarImg: { width: '20px', height: '20px', borderRadius: '50%' } as React.CSSProperties,
   avatarFallback: {
     width: '20px', height: '20px', borderRadius: '50%', display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '9px', fontWeight: 'bold' as const, background: 'var(--vscode-badge-background)', color: 'var(--vscode-badge-foreground)',
+    fontSize: initialsFontSize(20), fontWeight: 600, lineHeight: 1, color: '#fff',
   } as React.CSSProperties,
   commentAuthor: { fontWeight: 600 },
   commentDate: { opacity: 0.5, marginLeft: 'auto', flexShrink: 0 },
@@ -450,10 +457,7 @@ const css = {
   commentBody: { fontSize: '13px', lineHeight: 1.5 } as React.CSSProperties,
   commentEditWrap: { display: 'flex', flexDirection: 'column' as const } as React.CSSProperties,
   commentEditActions: { display: 'flex', alignItems: 'center', justifyContent: 'flex-end', gap: '8px', padding: '8px 12px 12px' } as React.CSSProperties,
-  commentEditCancelBtn: {
-    fontSize: '12px', padding: '6px 14px', borderRadius: '4px',
-    background: 'transparent', color: 'var(--vscode-foreground)', border: '1px solid var(--vscode-panel-border)', cursor: 'pointer',
-  } as React.CSSProperties,
+  commentEditCancelBtn: { fontSize: '12px', padding: '6px 14px' } as React.CSSProperties,
   commitRow: {
     position: 'relative' as const, zIndex: 1,
     display: 'flex', alignItems: 'center', gap: '8px', padding: '6px 12px', fontSize: '12px', cursor: 'pointer',
@@ -463,7 +467,7 @@ const css = {
   commitAvatarFallback: {
     width: '18px', height: '18px', borderRadius: '50%', flexShrink: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '8px', fontWeight: 'bold' as const, background: 'var(--vscode-badge-background)', color: 'var(--vscode-badge-foreground)',
+    fontSize: initialsFontSize(18), fontWeight: 600, lineHeight: 1, color: '#fff',
   } as React.CSSProperties,
   commitAuthor: {
     fontWeight: 600, flexShrink: 0, maxWidth: '120px', overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
@@ -492,9 +496,7 @@ const css = {
   form: { display: 'flex', flexDirection: 'column' as const, gap: '8px', marginTop: '4px' },
   actionsRow: { display: 'flex', alignItems: 'center', gap: '8px' } as React.CSSProperties,
   closeBtn: {
-    display: 'flex', alignItems: 'center', gap: '6px',
-    fontSize: '12px', padding: '6px 14px', borderRadius: '4px',
-    background: 'transparent', color: 'var(--vscode-foreground)', border: '1px solid var(--vscode-panel-border)', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', gap: '6px', fontSize: '12px', padding: '6px 14px',
   } as React.CSSProperties,
   submitBtn: {
     display: 'flex', alignItems: 'center', gap: '6px',

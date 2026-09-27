@@ -5,10 +5,13 @@ import { EMPTY_TREE, openSmartDiff } from './GitLogPanelProvider';
 import type { WorkspaceGitManager } from '../git/WorkspaceGitManager';
 import { loadIconTheme } from '../utils/IconThemeService';
 import { getAiModelLabel } from '../utils/aiModelLabel';
+import { buildPrompt } from '../ai/prompts';
 import { pickRefQuickPick } from '../utils/refPicker';
 import { formatGitError, showGitError, getRawErrorDetail } from '../utils/gitErrorUtils';
 import { logInfo, logWarn, logError } from '../utils/Logger';
 import type { CommitFullDetailToHostMsg, HostToCommitFullDetailMsg, HostToLogMsg, LogToHostMsg } from '../types/messages';
+import { panelIcon } from '../utils/panelIcon';
+import { webviewReadyGate } from '../utils/webviewReadyGate';
 
 const TAB_TITLE_MAX_LENGTH = 40;
 
@@ -39,13 +42,13 @@ export async function openCommitFullDetailPanel(
   const repo = manager.getRepo(repoId);
   if (!repo) {
     logWarn('commitFullDetail', 'Repository not found.');
-    vscode.window.showErrorMessage('Repository not found.');
+    vscode.window.showErrorMessage(vscode.l10n.t('Repository not found.'));
     return;
   }
 
   const panel = vscode.window.createWebviewPanel(
     'gitcharm.commitFullDetail',
-    `Commit ${hash.slice(0, 7)}`,
+    vscode.l10n.t('Commit {0}', hash.slice(0, 7)),
     vscode.ViewColumn.One,
     {
       enableScripts: true,
@@ -90,7 +93,7 @@ async function setupPanel(
   const repo = manager.getRepo(repoId);
   if (!repo) {
     logWarn('commitFullDetail', 'Repository not found.');
-    vscode.window.showErrorMessage('Repository not found.');
+    vscode.window.showErrorMessage(vscode.l10n.t('Repository not found.'));
     panel.dispose();
     return;
   }
@@ -109,7 +112,7 @@ async function setupPanel(
       // A stash ref isn't a real commit git log can decorate — read it from the stash
       // list instead, the same way the Git Log panel builds a stash's CommitNode.
       const stash = (await repo.stashList()).find(s => s.ref === hash);
-      if (!stash) throw new Error('Stash not found');
+      if (!stash) throw new Error(vscode.l10n.t('Stash not found'));
       commitInfo = {
         hash: stash.ref, shortHash: stash.ref, message: stash.message || `WIP on ${stash.branch}`,
         authorName: '', authorEmail: '', authorDate: stash.date, committerDate: stash.date,
@@ -141,9 +144,17 @@ async function setupPanel(
   const repoMeta = manager.getRepoMetas().find(r => r.id === repoId);
   const repoName = repoMeta?.name ?? repoId;
 
-  const titlePrefix = isStash ? 'Stash' : 'Commit';
-  panel.title = commitInfo.message ? `${titlePrefix} ${commitInfo.shortHash} - ${truncateTitle(commitInfo.message)}` : `${titlePrefix} ${commitInfo.shortHash}`;
-  panel.iconPath = new vscode.ThemeIcon(isStash ? 'archive' : 'git-commit');
+  if (commitInfo.message) {
+    const shortMessage = truncateTitle(commitInfo.message);
+    panel.title = isStash
+      ? vscode.l10n.t('Stash {0} - {1}', commitInfo.shortHash, shortMessage)
+      : vscode.l10n.t('Commit {0} - {1}', commitInfo.shortHash, shortMessage);
+  } else {
+    panel.title = isStash
+      ? vscode.l10n.t('Stash {0}', commitInfo.shortHash)
+      : vscode.l10n.t('Commit {0}', commitInfo.shortHash);
+  }
+  panel.iconPath = panelIcon(extensionUri, isStash ? 'archive' : 'git-commit');
 
   // Re-applied here (not just at createWebviewPanel time) so a panel restored via
   // registerWebviewPanelSerializer also gets the icon theme extension roots.
@@ -153,6 +164,7 @@ async function setupPanel(
   };
 
   panel.webview.html = getWebviewHtml(panel.webview, extensionUri, 'commitFullDetail', panel.title);
+  const gate = webviewReadyGate<HostToCommitFullDetailMsg>(panel);
 
   panel.webview.onDidReceiveMessage((msg: CommitFullDetailToHostMsg | LogToHostMsg) => handleMessage(msg, repoId, hash, repo, panel, extensionUri));
 
@@ -177,7 +189,7 @@ async function setupPanel(
     }
   }
 
-  panel.webview.postMessage({
+  gate.post({
     type: 'COMMITFULLDETAIL_INIT',
     repoId,
     repoName,
@@ -209,12 +221,11 @@ async function setupPanel(
 async function explainCommit(
   hash: string,
   repo: import('../git/GitService').GitService,
+  onProgress: (explanationSoFar: string) => void,
 ): Promise<{ explanation?: string; error?: string }> {
   try {
     const cfg = vscode.workspace.getConfiguration('gitcharm');
     const maxDiffChars: number = cfg.get('ai.maxDiffChars', 8000);
-    const configuredLang: string = cfg.get('ai.language', '');
-    const language = configuredLang.trim() || vscode.env.language || 'en';
 
     const [diff, fullMessage, commitMeta] = await Promise.all([
       repo.getCommitDiff(hash, maxDiffChars),
@@ -224,28 +235,19 @@ async function explainCommit(
     const commitFiles = await repo.getCommitFiles(hash, commitMeta.parents);
 
     const fileList = commitFiles.slice(0, 50).map(f => `${f.status[0].toUpperCase()} ${f.path}`).join('\n');
-    const prompt = [
-      'You are a code reviewer explaining a git commit to a developer.',
-      '',
-      'Rules:',
-      `- Write the explanation in this language: ${language}`,
-      '- Start with a one-sentence summary of what this commit does',
-      '- Then explain the key changes: what was modified and why',
-      '- Be specific: reference file names, function names, or module names when relevant',
-      '- Keep it concise but complete (3-8 sentences or bullet points)',
-      '- The output is rendered as Markdown: use it (bold, lists, inline code) where it helps readability',
-      '- Output ONLY the explanation, no code fences wrapping the whole response, no preamble',
-      '',
+    const prompt = buildPrompt('explainCommit', [
       `## Commit: ${commitMeta.shortHash}`,
       `## Message: ${fullMessage.trim() || commitMeta.message}`,
       '',
       '## Changed files',
       fileList,
-      diff ? `\n## Diff\n\`\`\`diff\n${diff}\n\`\`\`` : '',
-    ].filter(Boolean).join('\n');
+      diff && `\n## Diff\n\`\`\`diff\n${diff}\n\`\`\``,
+    ], cfg);
 
-    const { generateWithAI } = await import('../ai/aiGenerate');
-    const explanation = await generateWithAI(cfg.get('ai.provider', 'vscode-lm'), prompt, cfg);
+    const { cleanPartialModelOutput, generateWithAI } = await import('../ai/aiGenerate');
+    const explanation = await generateWithAI(cfg.get('ai.provider', 'vscode-lm'), prompt, cfg, {
+      onProgress: text => onProgress(cleanPartialModelOutput(text)),
+    });
     return { explanation };
   } catch (e: unknown) {
     logError('commitFullDetail:explain', formatGitError(e), getRawErrorDetail(e));
@@ -270,9 +272,9 @@ async function handleMessage(
       const shortHash = msg.hash.startsWith('stash@{') ? msg.hash : msg.hash.slice(0, 7);
       openAiExplainDetail(
         extensionUri,
-        { key: `commit:${msg.repoId}:${msg.hash}`, kind: 'commit', title: `Commit ${shortHash}` },
+        { key: `commit:${msg.repoId}:${msg.hash}`, kind: 'commit', title: vscode.l10n.t('Commit {0}', shortHash) },
         getAiModelLabel(cfg),
-        () => explainCommit(msg.hash, repo),
+        onProgress => explainCommit(msg.hash, repo, onProgress),
       );
       return;
     }
@@ -362,15 +364,16 @@ async function handleMessage(
         await repo.cherryPickFile(msg.hash, msg.filePath, msg.oldPath);
         post({ type: 'LOG_FILE_OP_RESULT', requestId: msg.requestId, ok: true });
         logInfo('commitFullDetail:cherryPickFile', `Cherry-picked changes for ${msg.filePath}.`);
-        vscode.window.showInformationMessage(`Cherry-picked changes for ${msg.filePath}.`);
+        vscode.window.showInformationMessage(vscode.l10n.t('Cherry-picked changes for {0}.', msg.filePath));
       } catch (e: unknown) {
         const errMsg = formatGitError(e);
         post({ type: 'LOG_FILE_OP_RESULT', requestId: msg.requestId, ok: false, error: errMsg });
         if (errMsg.includes('FILE_CHERRY_PICK_CONFLICT')) {
           const conflictFiles = errMsg.split('FILE_CHERRY_PICK_CONFLICT:')[1]?.trim();
           logWarn('commitFullDetail:cherryPickFile', `Cherry-pick of ${msg.filePath} has conflicts${conflictFiles ? ` in ${conflictFiles}` : ''}.`);
-          vscode.window.showWarningMessage(
-            `Cherry-pick of ${msg.filePath} has conflicts${conflictFiles ? ` in ${conflictFiles}` : ''}. Resolve them in the editor.`
+          vscode.window.showWarningMessage(conflictFiles
+            ? vscode.l10n.t('Cherry-pick of {0} has conflicts in {1}. Resolve them in the editor.', msg.filePath, conflictFiles)
+            : vscode.l10n.t('Cherry-pick of {0} has conflicts. Resolve them in the editor.', msg.filePath)
           );
         } else {
           showGitError('commitFullDetail:cherryPickFile', e);
@@ -381,8 +384,8 @@ async function handleMessage(
 
     case 'LOG_COMPARE_FILE_WITH': {
       const pickedRef = await pickRefQuickPick(repo, {
-        placeHolder: `Compare ${msg.filePath} with…`,
-        title: 'GitCharm - Compare With',
+        placeHolder: vscode.l10n.t('Compare {0} with…', msg.filePath),
+        title: vscode.l10n.t('GitCharm - Compare With'),
       });
       if (!pickedRef) return;
       let refHash: string;
@@ -390,7 +393,7 @@ async function handleMessage(
         refHash = await repo.resolveRef(pickedRef);
       } catch {
         logError('commitFullDetail:compareWith', `Cannot resolve ref "${pickedRef}"`);
-        vscode.window.showErrorMessage(`Cannot resolve ref "${pickedRef}"`);
+        vscode.window.showErrorMessage(vscode.l10n.t('Cannot resolve ref "{0}"', pickedRef));
         return;
       }
       const rootPath = repo.rootPath;
@@ -403,7 +406,7 @@ async function handleMessage(
         'vscode.diff',
         gitUri(msg.hash, msg.filePath),
         gitUri(refHash, msg.filePath),
-        `${msg.filePath} (${shortHash} vs ${pickedRef})`,
+        vscode.l10n.t('{0} ({1} vs {2})', msg.filePath, shortHash, pickedRef),
       );
       return;
     }
@@ -424,7 +427,7 @@ async function handleMessage(
           const modified = gitUri(f.status === 'D' ? EMPTY_TREE : msg.hash, f.path);
           return [label, original, modified] as [vscode.Uri, vscode.Uri, vscode.Uri];
         });
-      await vscode.commands.executeCommand('vscode.changes', `Changes in ${msg.hash.slice(0, 8)}`, resources);
+      await vscode.commands.executeCommand('vscode.changes', vscode.l10n.t('Changes in {0}', msg.hash.slice(0, 8)), resources);
       return;
     }
 

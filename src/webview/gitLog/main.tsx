@@ -1,3 +1,5 @@
+import '../shared/l10n';
+import * as l10n from '@vscode/l10n';
 import React, { useEffect, useCallback, useRef, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { useLogStore } from './store/logStore';
@@ -6,12 +8,13 @@ import { CommitList } from './components/CommitList';
 import { CommitDetail } from './components/CommitDetail';
 import { CommitFiltersBar, RepoTabs } from './components/CommitFiltersBar';
 import { assignLanes } from './utils/graphLayout';
+import { mergeCommitLists } from '../../host/utils/mergeCommitLists';
 import type { GraphLayout } from './utils/graphLayout';
 import { ResizeHandle } from '../shared/ResizeHandle';
 import { useResize } from '../shared/useResize';
-import { Codicon } from '../shared/Codicon';
 import { getVsCodeApi } from '../shared/vscodeApi';
-import type { LogToHostMsg, HostToLogMsg } from '../../host/types/messages';
+import { isEmbedded } from '../shared/embedded';
+import type { LogToHostMsg, HostToLogMsg, LogLayoutByLocation, LogViewLocation } from '../../host/types/messages';
 import type { CommitNode } from '../shared/types';
 
 function generateId() {
@@ -23,6 +26,21 @@ function generateId() {
 // so there is nothing to bound here.
 const PAGE_SIZE = 150;
 
+// Layout preferences embedded in the HTML, so a hidden filters bar or sidebar never flashes on load.
+const initialLayout: LogLayoutByLocation = (window as Window & { __INITIAL_CONFIG__?: { logLayout?: LogLayoutByLocation } })
+  .__INITIAL_CONFIG__?.logLayout ?? {
+    panel: { filtersHidden: false, sidebarHidden: false },
+    sideBar: { filtersHidden: true, sidebarHidden: true },
+  };
+
+// VS Code doesn't tell a view which container it is in: a Log taller than it is wide is
+// in the left or right side bar. The undocked panel is an editor tab, so always 'panel'.
+function detectViewLocation(): LogViewLocation {
+  if (isEmbedded()) return 'panel';
+  const { innerWidth, innerHeight } = window;
+  return innerWidth > 0 && innerHeight > innerWidth ? 'sideBar' : 'panel';
+}
+
 
 function App() {
   const store = useLogStore();
@@ -30,7 +48,9 @@ function App() {
   const { panelRef: sidebarRef, onMouseDown: onSidebarResize } = useResize('right', 250, 120, 400);
   const { panelRef: detailRef, onMouseDown: onDetailResize } = useResize('left', 380, 200, 600);
   const [detailCollapsed, setDetailCollapsed] = useState(false);
-  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
+  const [layoutByLocation, setLayoutByLocation] = useState(initialLayout);
+  const [viewLocation, setViewLocation] = useState(detectViewLocation);
+  const { filtersHidden, sidebarHidden } = layoutByLocation[viewLocation];
   const [themeVersion, setThemeVersion] = useState(0);
   const [multiSelectedCommits, setMultiSelectedCommits] = useState<CommitNode[]>([]);
   const [rangeEndpoints, setRangeEndpoints] = useState<{ older: CommitNode; newer: CommitNode } | null>(null);
@@ -46,6 +66,7 @@ function App() {
   const searchDebounceRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const reloadRef = useRef<() => void>(() => {});
   const filterRepoRef = useRef<(repoId: string | null, branch?: string | null) => void>(() => {});
+  const clearFiltersRef = useRef<() => void>(() => {});
   // Prevents concurrent requests
   const loadingInFlightRef = useRef(false);
   // Current requestId — used to discard responses from superseded requests
@@ -122,6 +143,13 @@ function App() {
           store.setRepos(msg.repos, msg.hasWorkspaceFolder, msg.aiEnabled, msg.activeProfile);
           store.setBranches(msg.branches);
           if (msg.iconTheme) store.setIconTheme(msg.iconTheme);
+          if (msg.layout) setLayoutByLocation(msg.layout);
+          break;
+        case 'LOG_LAYOUT_PREFS':
+          setLayoutByLocation(msg.layout);
+          break;
+        case 'LOG_CLEAR_FILTERS':
+          clearFiltersRef.current();
           break;
         case 'LOG_COMMITS_BATCH': {
           const match = msg.requestId === activeRequestIdRef.current;
@@ -297,9 +325,10 @@ function App() {
       ? store.stashes.filter(s => s.stashBranch === branchFilter)
       : store.stashes;
     if (visibleStashes.length === 0) return store.commits;
-    const merged = [...store.commits, ...visibleStashes];
-    merged.sort((a, b) => new Date(b.committerDate).getTime() - new Date(a.committerDate).getTime());
-    return merged;
+    // Stashes are unrelated to one another, so sorting them alone is safe; the commits keep
+    // git's topological order, which the graph layout depends on.
+    const stashesNewestFirst = [...visibleStashes].sort((a, b) => new Date(b.committerDate).getTime() - new Date(a.committerDate).getTime());
+    return mergeCommitLists([store.commits, stashesNewestFirst]);
   }, [store.commits, store.stashes, store.commitFilters.branch]);
 
   // assignLanes is expensive — run it off the render path via useEffect + rAF
@@ -380,6 +409,32 @@ function App() {
     reloadCommits(cleared);
   }, [reloadCommits]);
 
+  // "Clear Filters" from the title bar: the repository tab stays, since it is always on screen.
+  clearFiltersRef.current = () => {
+    const cleared = { text: '', author: '', branch: '', dateFrom: '', dateTo: '' };
+    store.setCommitFilters(cleared);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    reloadCommits(cleared);
+  };
+
+  // Follow the view as the user moves or resizes it, and tell the host so the
+  // title bar toggles reflect this location's preferences.
+  useEffect(() => {
+    if (isEmbedded()) return;
+    const onResize = () => setViewLocation(detectViewLocation());
+    window.addEventListener('resize', onResize);
+    return () => window.removeEventListener('resize', onResize);
+  }, []);
+
+  useEffect(() => {
+    if (!isEmbedded()) send({ type: 'LOG_VIEW_LOCATION', location: viewLocation });
+  }, [viewLocation, send]);
+
+  // Lets the title bar offer "Clear Filters" only while a filter is applied.
+  useEffect(() => {
+    send({ type: 'LOG_FILTERS_ACTIVE', active: isFiltered });
+  }, [isFiltered, send]);
+
   const activeRepoId = store.commitFilters.repoId;
   const sidebarBranches = useMemo(
     () => activeRepoId ? store.branches.filter(b => b.repoId === activeRepoId) : store.branches,
@@ -398,20 +453,20 @@ function App() {
       {!store.hasWorkspaceFolder ? (
         <>
           <div style={{ textAlign: 'center', color: 'var(--vscode-foreground)', fontSize: '13px', lineHeight: '1.5', opacity: 0.8 }}>
-            You have not yet opened a folder.
+            {l10n.t('You have not yet opened a folder.')}
           </div>
           <div style={{ display: 'flex', flexDirection: 'column', gap: '8px', width: '100%', maxWidth: '200px' }}>
-            <button style={initRepoBtnStyle} onClick={() => send({ type: 'LOG_OPEN_FOLDER' })}>Open Folder</button>
-            <button style={initRepoBtnStyle} onClick={() => send({ type: 'LOG_CLONE_REPO' })}>Clone Repository</button>
+            <button style={initRepoBtnStyle} onClick={() => send({ type: 'LOG_OPEN_FOLDER' })}>{l10n.t('Open Folder')}</button>
+            <button style={initRepoBtnStyle} onClick={() => send({ type: 'LOG_CLONE_REPO' })}>{l10n.t('Clone Repository')}</button>
           </div>
         </>
       ) : (
         <>
           <div style={{ textAlign: 'center', color: 'var(--vscode-foreground)', fontSize: '13px', lineHeight: '1.5', opacity: 0.8 }}>
-            The folder currently open doesn't have a Git repository. You can initialize a repository which will enable source control features powered by Git.
+            {l10n.t("The folder currently open doesn't have a Git repository. You can initialize a repository which will enable source control features powered by Git.")}
           </div>
           <button style={initRepoBtnStyle} onClick={() => send({ type: 'LOG_INIT_REPO' })}>
-            Initialize Repository
+            {l10n.t('Initialize Repository')}
           </button>
         </>
       )}
@@ -421,18 +476,17 @@ function App() {
   return (
     <div style={{ ...appStyle, position: 'relative' }} onContextMenu={e => e.preventDefault()}>
       {noRepoOverlay}
-      {/* Filters bar (contains Fetch All on the right) */}
-      <CommitFiltersBar
-        filters={store.commitFilters}
-        branches={store.branches}
-        tags={store.tags}
-        repos={store.repos}
-        onFilterChange={handleFilterChange}
-        onRepoChange={handleRepoChange}
-        onClear={handleClearFilters}
-        onFetchAll={() => send({ type: 'LOG_FETCH_ALL' })}
-        onUndock={(target) => send({ type: 'LOG_UNDOCK', target } as LogToHostMsg)}
-      />
+      {/* Filters bar — can be hidden from the view title bar */}
+      {!filtersHidden && (
+        <CommitFiltersBar
+          filters={store.commitFilters}
+          branches={store.branches}
+          tags={store.tags}
+          repos={store.repos}
+          onFilterChange={handleFilterChange}
+          onClear={handleClearFilters}
+        />
+      )}
       <RepoTabs
         value={store.commitFilters.repoId}
         repos={store.repos}
@@ -441,14 +495,7 @@ function App() {
 
       {/* Main layout */}
       <div style={{ ...mainLayout, visibility: showNoRepo ? 'hidden' : 'visible' }}>
-        {/* Branch sidebar */}
-        {sidebarCollapsed && (
-          <div style={collapsedSidebarStrip}>
-            <button data-top-action-btn="" style={expandSidebarBtn} onClick={() => setSidebarCollapsed(false)} title="Expand sidebar">
-              <Codicon name="layout-sidebar-left-off" style={{ fontSize: '14px' }} />
-            </button>
-          </div>
-        )}
+        {/* Branch sidebar — shown/hidden from the view title bar */}
         <BranchSidebar
           ref={sidebarRef}
           repos={store.repos.filter(r => !r.isWorktree)}
@@ -509,10 +556,9 @@ function App() {
           onDeleteTag={(repoIds, tagName) => {
             getVsCodeApi().postMessage({ type: 'LOG_DELETE_TAG_MULTI', requestId: generateId(), repoIds, tagName } satisfies LogToHostMsg);
           }}
-          onCollapse={() => setSidebarCollapsed(true)}
-          hidden={sidebarCollapsed}
+          hidden={sidebarHidden}
         />
-        {!sidebarCollapsed && <ResizeHandle onMouseDown={onSidebarResize} />}
+        {!sidebarHidden && <ResizeHandle onMouseDown={onSidebarResize} />}
 
         {/* Commit list (center) */}
         <div style={commitColumn}>
@@ -545,6 +591,7 @@ function App() {
             aiEnabled={store.aiEnabled}
             themeVersion={themeVersion}
             activeProfile={store.activeProfile}
+            hideDate={viewLocation === 'sideBar'}
           />
         </div>
 
@@ -602,30 +649,6 @@ const appStyle: React.CSSProperties = {
 };
 
 
-const collapsedSidebarStrip: React.CSSProperties = {
-  width: '24px',
-  flexShrink: 0,
-  display: 'flex',
-  flexDirection: 'column',
-  alignItems: 'center',
-  paddingTop: '6px',
-  borderRight: '1px solid var(--vscode-panel-border)',
-  background: 'var(--vscode-sideBar-background)',
-};
-
-const expandSidebarBtn: React.CSSProperties = {
-  display: 'flex',
-  alignItems: 'center',
-  justifyContent: 'center',
-  background: 'none',
-  border: 'none',
-  cursor: 'pointer',
-  padding: '3px',
-  borderRadius: '3px',
-  color: 'var(--vscode-foreground)',
-  opacity: 0.6,
-};
-
 const mainLayout: React.CSSProperties = {
   display: 'flex',
   flex: 1,
@@ -650,5 +673,6 @@ const detailPane: React.CSSProperties = {
   userSelect: 'text',
 };
 
+export { App as LogApp };
 
-createRoot(document.getElementById('root')!).render(<App />);
+if (!isEmbedded()) createRoot(document.getElementById('root')!).render(<App />);

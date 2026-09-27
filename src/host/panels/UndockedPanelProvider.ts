@@ -39,7 +39,7 @@ export class UndockedPanelProvider implements vscode.Disposable {
           this.extensionUri,
           'undockedPanel',
           'GitCharm',
-          { showCommit },
+          { showCommit, logLayout: this.logPanel.getLayoutPrefs() },
         );
       }
       if (target === 'newWindow' && !this.movedToNewWindow) {
@@ -76,14 +76,13 @@ export class UndockedPanelProvider implements vscode.Disposable {
       this.extensionUri,
       'undockedPanel',
       'GitCharm',
-      { showCommit },
+      { showCommit, logLayout: this.logPanel.getLayoutPrefs() },
     );
 
     // Route incoming messages to the correct provider based on message type prefix
     this.panel.webview.onDidReceiveMessage(
       (msg: UndockedToHostMsg) => {
         if (isLogMsg(msg)) {
-          if (msg.type === 'LOG_UNDOCK') return; // no-op: already undocked
           this.logPanel.handleUndockedMessage(msg, this);
         } else {
           this.commitPanel.handleUndockedMessage(msg as CommitToHostMsg, this);
@@ -118,6 +117,11 @@ export class UndockedPanelProvider implements vscode.Disposable {
 
   isOpen(): boolean {
     return this.panel !== null;
+  }
+
+  /** Whether the undocked panel is the focused editor. */
+  isActive(): boolean {
+    return this.panel?.active === true;
   }
 
   /** The undocked webview, for callers that need to build webview resource URIs. */

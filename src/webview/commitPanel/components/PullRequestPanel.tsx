@@ -1,7 +1,9 @@
 import React, { useEffect } from 'react';
 import type { RepoPullRequests, PullRequestSummary, ForgeProvider } from '../../shared/msgTypes';
 import { Codicon } from '../../shared/Codicon';
+import { avatarsEnabled, avatarColor, initials, initialsFontSize } from '../../shared/avatars';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
+import * as l10n from '@vscode/l10n';
 
 function useSkeletonStyle() {
   useEffect(() => {
@@ -31,38 +33,55 @@ interface Props {
   onOpenSearch: (repoId: string) => void;
 }
 
-const SELECTABLE_PROVIDERS: { value: ForgeProvider; label: string }[] = [
-  { value: 'github', label: 'GitHub Enterprise' },
-  { value: 'gitlab', label: 'GitLab (self-hosted)' },
-  { value: 'bitbucket', label: 'Bitbucket Server' },
-  { value: 'gitea', label: 'Gitea / Forgejo' },
-];
+function selectableProviders(): { value: ForgeProvider; label: string }[] {
+  return [
+    { value: 'github', label: 'GitHub Enterprise' },
+    { value: 'gitlab', label: l10n.t('GitLab (self-hosted)') },
+    { value: 'bitbucket', label: 'Bitbucket Server' },
+    { value: 'gitea', label: 'Gitea / Forgejo' },
+  ];
+}
 
-const FORGE_PROVIDER_LABELS: Record<ForgeProvider, string> = {
-  github: 'GitHub', gitlab: 'GitLab', bitbucket: 'Bitbucket', gitea: 'Gitea', unknown: 'Unknown',
-};
-
-function stateIcon(state: PullRequestSummary['state']): { icon: string; color: string; label: string } {
-  switch (state) {
-    case 'draft':  return { icon: 'git-pull-request-draft',  color: 'var(--vscode-descriptionForeground)', label: 'Draft' };
-    case 'merged': return { icon: 'git-merge',                color: '#a371f7', label: 'Merged' };
-    case 'closed': return { icon: 'git-pull-request-closed',  color: 'var(--vscode-errorForeground)', label: 'Closed' };
-    default:       return { icon: 'git-pull-request',         color: '#3fb950', label: 'Open' };
+function forgeProviderLabel(provider: ForgeProvider): string {
+  switch (provider) {
+    case 'github': return 'GitHub';
+    case 'gitlab': return 'GitLab';
+    case 'bitbucket': return 'Bitbucket';
+    case 'gitea': return 'Gitea';
+    default: return l10n.t('Unknown');
   }
 }
 
-function initials(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length === 1) return parts[0].slice(0, 2).toUpperCase();
-  return (parts[0][0] + parts[parts.length - 1][0]).toUpperCase();
+function stateIcon(state: PullRequestSummary['state']): { icon: string; color: string; label: string } {
+  switch (state) {
+    case 'draft':  return { icon: 'git-pull-request-draft',  color: 'var(--vscode-descriptionForeground)', label: l10n.t('Draft') };
+    case 'merged': return { icon: 'git-merge',                color: '#a371f7', label: l10n.t('Merged') };
+    case 'closed': return { icon: 'git-pull-request-closed',  color: 'var(--vscode-errorForeground)', label: l10n.t('Closed') };
+    default:       return { icon: 'git-pull-request',         color: '#3fb950', label: l10n.t('Open') };
+  }
 }
 
 function AuthorAvatar({ name, avatarUrl }: { name: string; avatarUrl?: string }) {
   const [failed, setFailed] = React.useState(false);
-  if (avatarUrl && !failed) {
+  if (avatarsEnabled && avatarUrl && !failed) {
     return <img src={avatarUrl} alt={name} title={name} style={row.avatarImg} onError={() => setFailed(true)} />;
   }
-  return <span style={row.avatarFallback} title={name}>{initials(name)}</span>;
+  return <span style={{ ...row.avatarFallback, background: avatarColor(name) }} title={name}>{initials(name)}</span>;
+}
+
+/** GitHub-style "✓ 3/3" — the icon reflects the worst state (any failure wins over pending), the count is passed/total. */
+function ChecksBadge({ checks }: { checks: NonNullable<PullRequestSummary['checks']> }) {
+  const { icon, color } = checks.failed > 0
+    ? { icon: 'close', color: 'var(--vscode-errorForeground)' }
+    : checks.pending > 0
+      ? { icon: 'circle-filled', color: 'var(--vscode-editorWarning-foreground, #d29922)' }
+      : { icon: 'check', color: '#3fb950' };
+  return (
+    <span style={row.checks} title={l10n.t('Checks: {0} passed, {1} failed, {2} pending', checks.passed, checks.failed, checks.pending)}>
+      <Codicon name={icon} style={{ fontSize: icon === 'circle-filled' ? '8px' : '12px', color }} />
+      {checks.passed}/{checks.total}
+    </span>
+  );
 }
 
 function PullRequestRow({ pr, repoId, suppressBorder = false, onOpenInBrowser, onOpenDetail }: {
@@ -92,15 +111,18 @@ function PullRequestRow({ pr, repoId, suppressBorder = false, onOpenInBrowser, o
         <span style={row.meta}>
           <AuthorAvatar name={pr.authorName} avatarUrl={pr.authorAvatarUrl} />
           {(pr.sourceBranch || pr.targetBranch) && (
-            <span style={row.branch}>
-              <Codicon name="git-branch" style={{ fontSize: '10px', marginRight: '3px', opacity: 0.6 }} />
-              {pr.sourceBranch} → {pr.targetBranch}
+            <span style={row.branch} title={`${pr.sourceBranch} → ${pr.targetBranch}`}>
+              <Codicon name="git-branch" style={{ fontSize: '10px', marginRight: '3px', opacity: 0.6, flexShrink: 0 }} />
+              <span style={row.sourceBranch}>{pr.sourceBranch}</span>
+              <span style={row.branchArrow}>→</span>
+              <span style={row.targetBranch}>{pr.targetBranch}</span>
             </span>
           )}
+          {pr.checks && <ChecksBadge checks={pr.checks} />}
         </span>
       </div>
       {hovered && (
-        <InlineIconBtn icon="link-external" title="Open in browser" visible onClick={e => { e.stopPropagation(); onOpenInBrowser(pr.url); }} />
+        <InlineIconBtn icon="link-external" title={l10n.t('Open in browser')} visible onClick={e => { e.stopPropagation(); onOpenInBrowser(pr.url); }} />
       )}
     </div>
   );
@@ -114,15 +136,15 @@ function UnknownProviderPrompt({ repo, onSetHostOverride }: {
   return (
     <div style={css.connectBox}>
       <Codicon name="question" style={{ fontSize: '20px', opacity: 0.5, marginBottom: '6px' }} />
-      <div style={css.connectText}>Could not detect a supported Git forge for this repo's remote.</div>
+      <div style={css.connectText}>{l10n.t("Could not detect a supported Git forge for this repo's remote.")}</div>
       <div style={{ display: 'flex', gap: '6px', alignItems: 'center' }}>
         <select style={css.select} value={selected} onChange={e => setSelected(e.target.value as ForgeProvider)}>
-          {SELECTABLE_PROVIDERS.map(p => (
+          {selectableProviders().map(p => (
             <option key={p.value} value={p.value}>{p.label}</option>
           ))}
         </select>
-        <button style={css.actionBtn} onClick={() => onSetHostOverride(repo.connection.host, selected)}>
-          Use this
+        <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onSetHostOverride(repo.connection.host, selected)}>
+          {l10n.t('Use this')}
         </button>
       </div>
     </div>
@@ -141,10 +163,10 @@ function ConnectPrompt({ repo, onOpenAccountPicker, onSetHostOverride }: {
   return (
     <div style={css.connectBox}>
       <Codicon name={isGitHub ? 'github' : 'plug'} style={{ fontSize: '20px', opacity: 0.5, marginBottom: '6px' }} />
-      <div style={css.connectText}>Not connected to {repo.connection.host || FORGE_PROVIDER_LABELS[repo.connection.provider]}</div>
-      <button style={css.actionBtn} onClick={() => onOpenAccountPicker(repo.repoId)}>
+      <div style={css.connectText}>{l10n.t('Not connected to {0}', repo.connection.host || forgeProviderLabel(repo.connection.provider))}</div>
+      <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onOpenAccountPicker(repo.repoId)}>
         <Codicon name={isGitHub ? 'github' : 'key'} style={{ marginRight: '4px', fontSize: '12px' }} />
-        Connect…
+        {l10n.t('Connect…')}
       </button>
     </div>
   );
@@ -208,17 +230,17 @@ function RepoSection({ repo, multiRepo, singleRepo, isLast = false, expanded, lo
         {repo.pending && <Codicon name="loading" className="codicon-modifier-spin" style={{ fontSize: '11px', opacity: 0.5, flexShrink: 0 }} />}
         <div style={{ marginLeft: 'auto', display: 'flex', gap: '2px' }} onClick={e => e.stopPropagation()}>
           {connected && isExpanded && (
-            <InlineIconBtn icon="search" title="Search pull requests" onClick={() => onOpenSearch(repo.repoId)} />
+            <InlineIconBtn icon="search" title={l10n.t('Search pull requests')} onClick={() => onOpenSearch(repo.repoId)} />
           )}
           {connected && isExpanded && (
-            <InlineIconBtn icon="filter" title="Filter pull requests" onClick={() => onOpenFilters(repo.repoId)} />
+            <InlineIconBtn icon="filter" title={l10n.t('Filter pull requests')} onClick={() => onOpenFilters(repo.repoId)} />
           )}
-          <InlineIconBtn icon="refresh" title="Refresh" onClick={() => onRefresh(repo.repoId)} />
+          <InlineIconBtn icon="refresh" title={l10n.t('Refresh')} onClick={() => onRefresh(repo.repoId)} />
           {connected && !repo.connection.detectionFailed && (
-            <InlineIconBtn icon="account" title="Switch account" onClick={() => onOpenAccountPicker(repo.repoId)} />
+            <InlineIconBtn icon="account" title={l10n.t('Switch account')} onClick={() => onOpenAccountPicker(repo.repoId)} />
           )}
           {connected && (
-            <InlineIconBtn icon="add" title="New Pull Request" onClick={() => onRequestCreate(repo.repoId)} />
+            <InlineIconBtn icon="add" title={l10n.t('New Pull Request')} onClick={() => onRequestCreate(repo.repoId)} />
           )}
         </div>
       </div>
@@ -237,7 +259,7 @@ function RepoSection({ repo, multiRepo, singleRepo, isLast = false, expanded, lo
               {!connected ? (
                 <ConnectPrompt repo={repo} onOpenAccountPicker={onOpenAccountPicker} onSetHostOverride={onSetHostOverride} />
               ) : repo.pullRequests.length === 0 ? (
-                <div style={css.empty}>No pull requests match the current filters</div>
+                <div style={css.empty}>{l10n.t('No pull requests match the current filters')}</div>
               ) : (
                 <>
                   {repo.pullRequests.map((pr, idx) => (
@@ -250,28 +272,28 @@ function RepoSection({ repo, multiRepo, singleRepo, isLast = false, expanded, lo
                       onOpenDetail={onOpenDetail}
                     />
                   ))}
-                  {loadingMore && <div style={css.loadingMore}>Loading more…</div>}
+                  {loadingMore && <div style={css.loadingMore}>{l10n.t('Loading more…')}</div>}
                 </>
               )}
             </>
           )}
           {!multiRepo && connected && !repo.pending && (
             <div style={css.singleRepoActions}>
-              <button style={css.actionBtn} onClick={() => onOpenSearch(repo.repoId)}>
+              <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onOpenSearch(repo.repoId)}>
                 <Codicon name="search" style={{ marginRight: '4px', fontSize: '12px' }} />
-                Search
+                {l10n.t('Search')}
               </button>
-              <button style={css.actionBtn} onClick={() => onOpenFilters(repo.repoId)}>
+              <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onOpenFilters(repo.repoId)}>
                 <Codicon name="filter" style={{ marginRight: '4px', fontSize: '12px' }} />
-                Filter
+                {l10n.t('Filter')}
               </button>
-              <button style={css.actionBtn} onClick={() => onRefresh(repo.repoId)}>
+              <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onRefresh(repo.repoId)}>
                 <Codicon name="refresh" style={{ marginRight: '4px', fontSize: '12px' }} />
-                Refresh
+                {l10n.t('Refresh')}
               </button>
-              <button style={css.actionBtn} onClick={() => onRequestCreate(repo.repoId)}>
+              <button className="gc-btn-secondary" style={css.actionBtn} onClick={() => onRequestCreate(repo.repoId)}>
                 <Codicon name="add" style={{ marginRight: '4px', fontSize: '12px' }} />
-                New Pull Request
+                {l10n.t('New Pull Request')}
               </button>
             </div>
           )}
@@ -289,7 +311,7 @@ export function PullRequestPanel({
   return (
     <div style={css.root}>
       {loading && repos.length === 0 ? (
-        <div style={css.empty}>Loading…</div>
+        <div style={css.empty}>{l10n.t('Loading…')}</div>
       ) : (
         repos.map((repo, idx) => (
           <RepoSection
@@ -339,10 +361,7 @@ const css = {
     borderTop: '1px solid var(--vscode-panel-border)',
   } as React.CSSProperties,
   actionBtn: {
-    display: 'flex', alignItems: 'center', fontSize: '11px',
-    background: 'var(--vscode-button-secondaryBackground)',
-    color: 'var(--vscode-button-secondaryForeground)',
-    border: 'none', borderRadius: '3px', padding: '3px 8px', cursor: 'pointer',
+    display: 'flex', alignItems: 'center', fontSize: '11px', padding: '3px 8px',
   } as React.CSSProperties,
   empty: { padding: '16px 12px', fontSize: '12px', opacity: 0.45, textAlign: 'center' as const },
   errorRow: {
@@ -375,10 +394,25 @@ const row = {
   nameText: {
     overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, minWidth: 0, flexShrink: 1,
   } as React.CSSProperties,
-  meta: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px' } as React.CSSProperties,
+  meta: { display: 'flex', alignItems: 'center', gap: '6px', marginTop: '2px', minWidth: 0 } as React.CSSProperties,
   branch: {
     fontSize: '10px', opacity: 0.55, display: 'flex', alignItems: 'center',
-    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const,
+    overflow: 'hidden', whiteSpace: 'nowrap' as const, minWidth: 0,
+  } as React.CSSProperties,
+  // Source and target truncate independently so the arrow between them always stays visible.
+  // The target is what matters most, so the source's huge shrink factor makes it absorb nearly
+  // all the overflow first; only once it's down to its min width does the target start to shrink.
+  sourceBranch: {
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, minWidth: '3ch', flexShrink: 10000,
+  } as React.CSSProperties,
+  targetBranch: {
+    overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap' as const, minWidth: 0, flexShrink: 1,
+  } as React.CSSProperties,
+  branchArrow: { flexShrink: 0, margin: '0 3px' } as React.CSSProperties,
+  // Never shrinks — the branch block before it is what gives way when the row gets narrow.
+  checks: {
+    fontSize: '10px', display: 'flex', alignItems: 'center', gap: '3px', flexShrink: 0,
+    color: 'var(--vscode-descriptionForeground)',
   } as React.CSSProperties,
   avatarImg: {
     width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
@@ -387,8 +421,8 @@ const row = {
   avatarFallback: {
     width: '16px', height: '16px', borderRadius: '50%', flexShrink: 0,
     display: 'flex', alignItems: 'center', justifyContent: 'center',
-    fontSize: '8px', fontWeight: 'bold' as const,
-    background: 'var(--vscode-badge-background)', color: 'var(--vscode-badge-foreground)',
+    fontSize: initialsFontSize(16), fontWeight: 600, lineHeight: 1,
+    color: '#fff',
     border: '1px solid rgba(128,128,128,0.35)', boxSizing: 'border-box' as const,
   } as React.CSSProperties,
 };

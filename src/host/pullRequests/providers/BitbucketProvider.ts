@@ -1,11 +1,13 @@
+import * as vscode from 'vscode';
 import type {
   ActionResult, ChangedFile, CiCheck, CiStatus, CreatePullRequestInput, CreatePullRequestResult, FileDiffContent, FileDiffRefs,
-  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities,
+  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities, PullRequestChecksSummary,
   PullRequestComment, PullRequestCommit, PullRequestDetail, PullRequestEvent, PullRequestLabel, PullRequestProvider,
   PullRequestStateFilter, PullRequestSummary, PullRequestUser, SubmitReviewInput, UnsupportedResult, UpdatePullRequestInput,
 } from '../types';
 import type { BitbucketCredentials } from '../PatCredentialStore';
 import { httpJson, HttpJsonError } from '../httpJson';
+import { summarizeChecksPerPr } from '../checksSummary';
 import { formatApiError } from '../formatApiError';
 
 const PAGE_SIZE = 30;
@@ -33,6 +35,8 @@ const CAPABILITIES: PullRequestCapabilities = {
 
 interface RawBitbucketUserRef {
   uuid: string;
+  /** Atlassian account id — what Bitbucket's markdown mention syntax (`@{account_id}`) refers to. */
+  account_id?: string;
   display_name: string;
   nickname?: string;
   links: { avatar: { href: string } };
@@ -44,7 +48,7 @@ interface RawBitbucketPr {
   links: { html: { href: string } };
   state: 'OPEN' | 'MERGED' | 'DECLINED' | 'SUPERSEDED';
   draft?: boolean;
-  source: { branch: { name: string }; repository?: { full_name: string } };
+  source: { branch: { name: string }; commit?: { hash: string }; repository?: { full_name: string } };
   destination: { branch: { name: string }; repository?: { full_name: string } };
   author: { display_name: string; nickname?: string; uuid?: string; links: { avatar: { href: string } } } | null;
   created_on: string;
@@ -93,12 +97,26 @@ interface RawBitbucketCommentPage {
   next?: string;
 }
 
+interface RawBitbucketActivityChange<T> {
+  old?: T;
+  new?: T;
+}
+
+/** Every `update` activity entry is a full snapshot of the PR at that moment (title/state/description are
+ * always present), and `changes` is the only part describing what that update actually changed —
+ * e.g. `{status: {old: 'open', new: 'fulfilled'}}`, `{reviewers: {added: [...], removed: [...]}}`, or `{}`
+ * for a plain push/refresh. */
 interface RawBitbucketActivityUpdate {
   title?: string;
-  state?: 'OPEN' | 'MERGED' | 'DECLINED';
+  state?: 'OPEN' | 'MERGED' | 'DECLINED' | 'SUPERSEDED';
   reason?: string;
   date: string;
   author?: RawBitbucketCommentUser;
+  changes?: {
+    title?: RawBitbucketActivityChange<string>;
+    status?: RawBitbucketActivityChange<string>;
+    reviewers?: { added?: RawBitbucketUserRef[]; removed?: RawBitbucketUserRef[] };
+  };
 }
 
 interface RawBitbucketActivityEntry {
@@ -175,7 +193,8 @@ function mapPr(pr: RawBitbucketPr): PullRequestSummary {
     createdAt: pr.created_on,
     updatedAt: pr.updated_on,
     commentCount: pr.comment_count,
-    reviewers: (pr.reviewers ?? []).map(u => ({ id: u.uuid, username: u.display_name ?? u.nickname ?? u.uuid, avatarUrl: u.links?.avatar?.href })),
+    reviewers: (pr.reviewers ?? []).map(mapUserRef),
+    headSha: pr.source.commit?.hash,
   };
 }
 
@@ -210,6 +229,15 @@ function mapDiffstatEntry(entry: RawBitbucketDiffstatEntry): ChangedFile {
   };
   if (oldPath && oldPath !== path) file.oldPath = oldPath;
   return file;
+}
+
+function mapUserRef(u: RawBitbucketUserRef): PullRequestUser {
+  return {
+    id: u.uuid,
+    username: u.display_name ?? u.nickname ?? u.uuid,
+    avatarUrl: u.links?.avatar?.href,
+    mention: u.account_id ? `@{${u.account_id}}` : undefined,
+  };
 }
 
 function mapCommentUser(user: RawBitbucketCommentUser | null): { authorName: string; authorAvatarUrl?: string } {
@@ -383,11 +411,7 @@ export class BitbucketProvider implements PullRequestProvider {
     let url = `${this.apiBase()}/workspaces/${owner}/members?pagelen=${PAGE_SIZE}`;
     for (;;) {
       const { data } = await httpJson<{ values: { user: RawBitbucketUserRef }[]; next?: string }>(url, { headers });
-      users.push(...data.values.map(m => ({
-        id: m.user.uuid,
-        username: m.user.display_name ?? m.user.nickname ?? m.user.uuid,
-        avatarUrl: m.user.links?.avatar?.href,
-      })));
+      users.push(...data.values.map(m => mapUserRef(m.user)));
       if (!data.next) break;
       url = data.next;
     }
@@ -434,6 +458,10 @@ export class BitbucketProvider implements PullRequestProvider {
     }));
   }
 
+  async getChecksSummaries(owner: string, repo: string, prs: PullRequestSummary[]): Promise<Map<number, PullRequestChecksSummary>> {
+    return summarizeChecksPerPr(prs, headSha => this.listChecks(owner, repo, headSha));
+  }
+
   async getPullRequestDetail(owner: string, repo: string, number: number): Promise<PullRequestDetail> {
     const headers = await this.headers();
     const { data } = await httpJson<RawBitbucketPrDetail>(
@@ -473,7 +501,7 @@ export class BitbucketProvider implements PullRequestProvider {
       ciStatus,
       capabilities: CAPABILITIES,
       canWrite,
-      reviewers: (data.reviewers ?? []).map(u => ({ id: u.uuid, username: u.display_name ?? u.nickname ?? u.uuid, avatarUrl: u.links?.avatar?.href })),
+      reviewers: (data.reviewers ?? []).map(mapUserRef),
       assignees: [],
       labels: [],
     };
@@ -484,7 +512,13 @@ export class BitbucketProvider implements PullRequestProvider {
     const body: Record<string, unknown> = {};
     if (input.title !== undefined) body.title = input.title;
     if (input.targetBranch !== undefined) body.destination = { branch: { name: input.targetBranch } };
+    if (input.description !== undefined) body.description = input.description;
     try {
+      // Same `title`-is-required quirk as updateReviewers below.
+      if (body.title === undefined) {
+        const { data: current } = await httpJson<RawBitbucketPr>(`${this.apiBase()}/repositories/${owner}/${repo}/pullrequests/${number}`, { headers });
+        body.title = current.title;
+      }
       await httpJson(`${this.apiBase()}/repositories/${owner}/${repo}/pullrequests/${number}`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
@@ -513,11 +547,11 @@ export class BitbucketProvider implements PullRequestProvider {
   }
 
   async updateAssignees(): Promise<ActionResult | UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Bitbucket does not support assignees on pull requests, only reviewers.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Bitbucket does not support assignees on pull requests, only reviewers.') };
   }
 
   async updateLabels(): Promise<ActionResult | UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Bitbucket does not support labels on pull requests.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Bitbucket does not support labels on pull requests.') };
   }
 
   /** Bitbucket Cloud only lets a comment's own author edit it; delete also allows a workspace/repo admin
@@ -566,34 +600,52 @@ export class BitbucketProvider implements PullRequestProvider {
     return comments;
   }
 
-  /** Bitbucket Cloud's only timeline-shaped endpoint is Pull Request Activity — it reports title renames and
-   * state transitions (open/reopened/declined/merged) as `update` entries, but has no dedicated label/assignee/
-   * reviewer change events at all, so those kinds are simply never produced here. It also never reports the
-   * previous title on a rename, only the new one. */
+  /** Bitbucket Cloud's only timeline-shaped endpoint is Pull Request Activity. Its `update` entries are full
+   * PR snapshots (the title is on every one of them, so "has a title" means nothing) — what actually changed
+   * lives in `changes` (title, status, reviewers). When `changes` is missing, consecutive snapshots are
+   * compared instead, oldest first; the oldest snapshot is the PR's creation and never yields an event.
+   * No label/assignee concept exists on Bitbucket, so those kinds are never produced here. */
   async listEvents(owner: string, repo: string, number: number): Promise<PullRequestEvent[]> {
     const headers = await this.headers();
-    const events: PullRequestEvent[] = [];
+    const updates: RawBitbucketActivityUpdate[] = [];
     let url = `${this.apiBase()}/repositories/${owner}/${repo}/pullrequests/${number}/activity?pagelen=${PAGE_SIZE}`;
     for (;;) {
       const { data } = await httpJson<RawBitbucketActivityPage>(url, { headers });
-      for (const entry of data.values) {
-        const u = entry.update;
-        if (!u) continue;
-        const actorName = u.author?.display_name ?? 'unknown';
-        const actorAvatarUrl = u.author?.links?.avatar?.href;
-        if (u.title) {
-          events.push({ id: `title-${u.date}`, kind: 'renamed', actorName, actorAvatarUrl, createdAt: u.date, newTitle: u.title });
-        }
-        if (u.state === 'OPEN' && u.reason?.toLowerCase().includes('reopen')) {
-          events.push({ id: `state-${u.date}`, kind: 'reopened', actorName, actorAvatarUrl, createdAt: u.date });
-        } else if (u.state === 'DECLINED') {
-          events.push({ id: `state-${u.date}`, kind: 'closed', actorName, actorAvatarUrl, createdAt: u.date });
-        } else if (u.state === 'MERGED') {
-          events.push({ id: `state-${u.date}`, kind: 'merged', actorName, actorAvatarUrl, createdAt: u.date });
-        }
-      }
+      for (const entry of data.values) if (entry.update) updates.push(entry.update);
       if (!data.next) break;
       url = data.next;
+    }
+    updates.sort((a, b) => a.date.localeCompare(b.date));
+
+    const events: PullRequestEvent[] = [];
+    let previous: RawBitbucketActivityUpdate | undefined;
+    for (const u of updates) {
+      const base = { actorName: u.author?.display_name ?? 'unknown', actorAvatarUrl: u.author?.links?.avatar?.href, createdAt: u.date };
+      const changes = u.changes;
+
+      const titleChange = changes?.title ?? (!changes && previous && previous.title !== u.title ? { old: previous.title, new: u.title } : undefined);
+      if (titleChange?.new && titleChange.new !== titleChange.old) {
+        events.push({ ...base, id: `title-${u.date}`, kind: 'renamed', previousTitle: titleChange.old, newTitle: titleChange.new });
+      }
+
+      // `changes.status` uses lowercase API-v1 names (open/fulfilled/declined), the snapshot's `state` uses OPEN/MERGED/DECLINED.
+      const statusChange = changes?.status
+        ?? (!changes && previous?.state && u.state && previous.state !== u.state ? { old: previous.state.toLowerCase(), new: u.state.toLowerCase() } : undefined);
+      const newStatus = statusChange?.new?.toLowerCase();
+      if (newStatus && newStatus !== statusChange?.old?.toLowerCase()) {
+        if (newStatus === 'fulfilled' || newStatus === 'merged') events.push({ ...base, id: `state-${u.date}`, kind: 'merged' });
+        else if (newStatus === 'declined') events.push({ ...base, id: `state-${u.date}`, kind: 'closed' });
+        else if (newStatus === 'open' && statusChange?.old?.toLowerCase() === 'declined') events.push({ ...base, id: `state-${u.date}`, kind: 'reopened' });
+      }
+
+      for (const [i, user] of (changes?.reviewers?.added ?? []).entries()) {
+        events.push({ ...base, id: `reviewer-add-${u.date}-${i}`, kind: 'reviewRequested', user: mapUserRef(user) });
+      }
+      for (const [i, user] of (changes?.reviewers?.removed ?? []).entries()) {
+        events.push({ ...base, id: `reviewer-remove-${u.date}-${i}`, kind: 'reviewRequestRemoved', user: mapUserRef(user) });
+      }
+
+      previous = u;
     }
     return events;
   }
@@ -645,11 +697,11 @@ export class BitbucketProvider implements PullRequestProvider {
   }
 
   async hideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Bitbucket Cloud has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Bitbucket Cloud has no concept of hiding a comment.') };
   }
 
   async unhideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Bitbucket Cloud has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Bitbucket Cloud has no concept of hiding a comment.') };
   }
 
   async listChangedFiles(owner: string, repo: string, number: number): Promise<ChangedFile[]> {
@@ -747,13 +799,13 @@ export class BitbucketProvider implements PullRequestProvider {
   }
 
   async reopenPullRequest(): Promise<ActionResult | UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Bitbucket does not support reopening a declined pull request. This is a permanent platform limitation.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Bitbucket does not support reopening a declined pull request. This is a permanent platform limitation.') };
   }
 
   async submitReview(owner: string, repo: string, number: number, input: SubmitReviewInput): Promise<ActionResult | UnsupportedResult> {
     if (input.event === 'comment') {
       if (!input.body?.trim()) {
-        return { ok: false, error: 'A comment body is required for this review type' };
+        return { ok: false, error: vscode.l10n.t('A comment body is required for this review type') };
       }
       const result = await this.postComment(owner, repo, number, input.body);
       return result.ok ? { ok: true } : { ok: false, error: result.error };

@@ -1,3 +1,5 @@
+import '../shared/l10n';
+import * as l10n from '@vscode/l10n';
 import React, { useCallback, useEffect, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { PullRequestHeader } from './components/PullRequestHeader';
@@ -9,9 +11,10 @@ import { ChecksList } from './components/ChecksList';
 import { PeopleField, EditFieldButton } from './components/PeoplePanel';
 import { LabelsPanel } from './components/LabelsPanel';
 import { AiExplainFab } from '../shared/AiExplainFab';
-import { getVsCodeApi } from '../shared/vscodeApi';
+import { getVsCodeApi, notifyHostReady } from '../shared/vscodeApi';
 import { Codicon } from '../shared/Codicon';
 import { SkeletonBlock, SkeletonChips } from '../shared/Skeleton';
+import { MentionCandidatesContext, toMentionCandidates, type MentionCandidate } from '../shared/mentions';
 import type {
   ChangedFile, CiCheck, HostToPrDetailMsg, IconThemeData, MergeStrategy, PrDetailToHostMsg, PullRequestComment,
   PullRequestCommit, PullRequestDetail, PullRequestEvent, PullRequestSummary,
@@ -98,6 +101,10 @@ function App() {
   const [updatingReviewers, setUpdatingReviewers] = useState(false);
   const [updatingAssignees, setUpdatingAssignees] = useState(false);
   const [updatingLabels, setUpdatingLabels] = useState(false);
+  const [editingDescription, setEditingDescription] = useState(false);
+  const [savingDescription, setSavingDescription] = useState(false);
+  const [descriptionError, setDescriptionError] = useState<string | undefined>();
+  const [mentionCandidates, setMentionCandidates] = useState<MentionCandidate[]>([]);
 
   const send = useCallback((msg: PrDetailToHostMsg) => {
     getVsCodeApi().postMessage(msg);
@@ -122,6 +129,20 @@ function App() {
           send({ type: 'PRDETAIL_REQUEST_FILES' });
           send({ type: 'PRDETAIL_REQUEST_COMMITS' });
           send({ type: 'PRDETAIL_REQUEST_EVENTS' });
+          send({ type: 'PRDETAIL_REQUEST_MENTION_CANDIDATES' });
+          break;
+        case 'PRDETAIL_MENTION_CANDIDATES':
+          setMentionCandidates(toMentionCandidates(msg.users));
+          break;
+        case 'PRDETAIL_DESCRIPTION_UPDATED':
+          setSavingDescription(false);
+          if (msg.ok) {
+            setEditingDescription(false);
+            setDescriptionError(undefined);
+            send({ type: 'PRDETAIL_REQUEST_DETAIL' });
+          } else {
+            setDescriptionError(msg.error ?? l10n.t('Failed to update pull request'));
+          }
           break;
         case 'PRDETAIL_LOADED':
           setDetailLoading(false);
@@ -188,7 +209,7 @@ function App() {
             setMergeError(undefined);
             send({ type: 'PRDETAIL_REQUEST_DETAIL' });
           } else {
-            setMergeError(msg.error ?? 'Failed to merge pull request');
+            setMergeError(msg.error ?? l10n.t('Failed to merge pull request'));
           }
           break;
         case 'PRDETAIL_CLOSE_RESULT':
@@ -197,7 +218,7 @@ function App() {
             setCloseError(undefined);
             send({ type: 'PRDETAIL_REQUEST_DETAIL' });
           } else {
-            setCloseError(msg.error ?? 'Failed to close pull request');
+            setCloseError(msg.error ?? l10n.t('Failed to close pull request'));
           }
           break;
         case 'PRDETAIL_REOPEN_RESULT':
@@ -206,7 +227,7 @@ function App() {
             setReopenError(undefined);
             send({ type: 'PRDETAIL_REQUEST_DETAIL' });
           } else {
-            setReopenError(msg.error ?? 'Failed to reopen pull request');
+            setReopenError(msg.error ?? l10n.t('Failed to reopen pull request'));
           }
           break;
         case 'PRDETAIL_CHECKOUT_RESULT':
@@ -240,6 +261,7 @@ function App() {
       }
     };
     window.addEventListener('message', handler);
+    notifyHostReady();
     return () => window.removeEventListener('message', handler);
   }, [send]);
 
@@ -300,6 +322,17 @@ function App() {
     setUpdatingLabels(true);
     send({ type: 'PRDETAIL_PICK_LABELS' });
   }, [send]);
+
+  const handleSaveDescription = useCallback((description: string) => {
+    setSavingDescription(true);
+    setDescriptionError(undefined);
+    send({ type: 'PRDETAIL_UPDATE_DESCRIPTION', description });
+  }, [send]);
+
+  const handleCancelDescriptionEdit = useCallback(() => {
+    setEditingDescription(false);
+    setDescriptionError(undefined);
+  }, []);
 
   const handlePostComment = useCallback((body: string) => {
     setPostingComment(true);
@@ -381,7 +414,10 @@ function App() {
     );
   }
 
+  const canEdit = !!detail && detail.capabilities.canClose && detail.canWrite && (detail.state === 'open' || detail.state === 'draft');
+
   return (
+    <MentionCandidatesContext.Provider value={mentionCandidates}>
     <div style={css.page} className="pr-detail-root">
       <PullRequestHeader
         summary={summary}
@@ -392,7 +428,7 @@ function App() {
           && !(!!currentUsername && currentUsername === detail.authorName)
         }
         approving={approving}
-        canEdit={!!detail && detail.capabilities.canClose && detail.canWrite && (detail.state === 'open' || detail.state === 'draft')}
+        canEdit={canEdit}
         updating={updating}
         merging={merging}
         mergeError={mergeError}
@@ -416,10 +452,10 @@ function App() {
 
       <div style={css.tabBar}>
         {([
-          { id: 'overview' as const, label: 'Overview', icon: 'note', count: (commentsLoading ? summary?.commentCount : comments.length) || undefined },
-          { id: 'changes' as const, label: 'Changes', icon: 'diff', count: files.length || undefined },
-          { id: 'commits' as const, label: 'Commits', icon: 'git-commit', count: commits.length || undefined },
-          { id: 'checks' as const, label: 'Checks', icon: 'checklist', count: checks.length || undefined },
+          { id: 'overview' as const, label: l10n.t('Overview'), icon: 'note', count: (commentsLoading ? summary?.commentCount : comments.length) || undefined },
+          { id: 'changes' as const, label: l10n.t('Changes'), icon: 'diff', count: files.length || undefined },
+          { id: 'commits' as const, label: l10n.t('Commits'), icon: 'git-commit', count: commits.length || undefined },
+          { id: 'checks' as const, label: l10n.t('Checks'), icon: 'checklist', count: checks.length || undefined },
         ]).map(tab => (
           <button
             key={tab.id}
@@ -427,7 +463,7 @@ function App() {
             style={css.tab(activeTab === tab.id)}
             onClick={() => setActiveTab(tab.id)}
           >
-            <Codicon name={tab.icon} style={{ fontSize: '13px', marginRight: '5px' }} />
+            <Codicon name={tab.icon} style={{ fontSize: '15px', marginRight: '6px' }} />
             {tab.label}
             {tab.count !== undefined && <span style={css.tabCount}>{tab.count}</span>}
           </button>
@@ -440,12 +476,25 @@ function App() {
         {activeTab === 'overview' && (
           <div className="pr-overview-layout">
             <div className="pr-overview-main">
-              <CollapsibleSection title="Description" icon="note" first>
-                <div style={css.descriptionBox}>
-                  <DescriptionPanel description={detail?.description ?? ''} loading={detailLoading} />
+              <CollapsibleSection
+                title={l10n.t('Description')} icon="note" first
+                headerAction={canEdit && !editingDescription && (
+                  <EditFieldButton title={l10n.t('Edit description')} updating={savingDescription} onPick={() => setEditingDescription(true)} />
+                )}
+              >
+                <div style={editingDescription ? undefined : css.descriptionBox}>
+                  <DescriptionPanel
+                    description={detail?.description ?? ''}
+                    loading={detailLoading}
+                    editing={editingDescription}
+                    saving={savingDescription}
+                    saveError={descriptionError}
+                    onSave={handleSaveDescription}
+                    onCancelEdit={handleCancelDescriptionEdit}
+                  />
                 </div>
               </CollapsibleSection>
-              <CollapsibleSection title="Activity" icon="comment-discussion">
+              <CollapsibleSection title={l10n.t('Activity')} icon="comment-discussion">
                 <CommentsThread
                   comments={comments}
                   commits={commits}
@@ -468,33 +517,33 @@ function App() {
             </div>
             <div className="pr-overview-sidebar">
               <StaticSection
-                title="Reviewers" icon="eye" first
+                title={l10n.t('Reviewers')} icon="eye" first
                 headerAction={!!detail && detail.capabilities.canManageReviewers && detail.canWrite && (
-                  <EditFieldButton label="Reviewers" updating={updatingReviewers} onPick={handlePickReviewers} />
+                  <EditFieldButton title={l10n.t('Edit reviewers')} updating={updatingReviewers} onPick={handlePickReviewers} />
                 )}
               >
                 {!detail ? <SkeletonChips count={2} /> : <PeopleField people={detail.reviewers} />}
               </StaticSection>
               <StaticSection
-                title="Assignees" icon="account"
+                title={l10n.t('Assignees')} icon="account"
                 headerAction={!!detail && detail.capabilities.canManageAssignees && detail.canWrite && (
-                  <EditFieldButton label="Assignees" updating={updatingAssignees} onPick={handlePickAssignees} />
+                  <EditFieldButton title={l10n.t('Edit assignees')} updating={updatingAssignees} onPick={handlePickAssignees} />
                 )}
               >
                 {!detail ? <SkeletonChips count={2} /> : !detail.capabilities.canManageAssignees ? (
-                  <span style={css.notAvailable}>Not available for this provider</span>
+                  <span style={css.notAvailable}>{l10n.t('Not available for this provider')}</span>
                 ) : (
                   <PeopleField people={detail.assignees} />
                 )}
               </StaticSection>
               <StaticSection
-                title="Labels" icon="tag"
+                title={l10n.t('Labels')} icon="tag"
                 headerAction={!!detail && detail.capabilities.canManageLabels && detail.canWrite && (
-                  <EditFieldButton label="Labels" updating={updatingLabels} onPick={handlePickLabels} />
+                  <EditFieldButton title={l10n.t('Edit labels')} updating={updatingLabels} onPick={handlePickLabels} />
                 )}
               >
                 {!detail ? <SkeletonChips count={2} /> : !detail.capabilities.canManageLabels ? (
-                  <span style={css.notAvailable}>Not available for this provider</span>
+                  <span style={css.notAvailable}>{l10n.t('Not available for this provider')}</span>
                 ) : (
                   <LabelsPanel labels={detail.labels} hasLabels={detail.capabilities.canManageLabels} />
                 )}
@@ -533,6 +582,7 @@ function App() {
         )}
       </div>
     </div>
+    </MentionCandidatesContext.Provider>
   );
 }
 

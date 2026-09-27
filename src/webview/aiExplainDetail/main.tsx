@@ -1,7 +1,10 @@
+import '../shared/l10n';
+import * as l10n from '@vscode/l10n';
 import React, { useEffect, useMemo, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { Codicon } from '../shared/Codicon';
 import { renderMarkdown } from '../shared/renderMarkdown';
+import { notifyHostReady } from '../shared/vscodeApi';
 import type { HostToAiExplainMsg } from '../../host/types/messages';
 
 function App() {
@@ -27,6 +30,11 @@ function App() {
           setExplanation(null);
           setError(null);
           break;
+        case 'AIEXPLAIN_PROGRESS':
+          // Still generating: show what's written so far; `loading` stays on for the footer indicator.
+          setExplanation(msg.explanation);
+          setError(null);
+          break;
         case 'AIEXPLAIN_RESULT':
           setLoading(false);
           if (msg.error) {
@@ -40,6 +48,7 @@ function App() {
       }
     };
     window.addEventListener('message', handler);
+    notifyHostReady();
     return () => window.removeEventListener('message', handler);
   }, []);
 
@@ -56,19 +65,19 @@ function App() {
       </div>
       <div style={css.modelRow}>
         <Codicon name="sparkle" style={{ fontSize: '12px', opacity: 0.6 }} />
-        <span>AI Explanation</span>
+        <span>{l10n.t('AI Explanation')}</span>
         {modelLabel && <span style={css.modelLabel}>{modelLabel}</span>}
       </div>
       <div style={css.body}>
-        {loading && (
-          <div style={css.loading}>
-            <Codicon name="loading" className="codicon-modifier-spin" style={{ fontSize: '14px' }} />
-            <span>Generating explanation…</span>
-          </div>
-        )}
         {!loading && error && <div style={css.error}>{error}</div>}
-        {!loading && !error && explanation && (
+        {!error && explanation && (
           <div className="markdown-body" style={css.text} dangerouslySetInnerHTML={{ __html: html }} />
+        )}
+        {loading && (
+          <div style={{ ...css.loading, ...(explanation ? { marginTop: '10px' } : null) }}>
+            <Codicon name="loading" className="codicon-modifier-spin" style={{ fontSize: '14px' }} />
+            <span>{l10n.t('Generating explanation…')}</span>
+          </div>
         )}
       </div>
     </div>

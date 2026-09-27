@@ -1,10 +1,12 @@
+import * as vscode from 'vscode';
 import type {
   ActionResult, ChangedFile, CiCheck, CiStatus, CreatePullRequestInput, CreatePullRequestResult, FileDiffContent, FileDiffRefs,
-  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities,
+  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities, PullRequestChecksSummary,
   PullRequestComment, PullRequestCommit, PullRequestDetail, PullRequestEvent, PullRequestLabel, PullRequestProvider,
   PullRequestStateFilter, PullRequestSummary, PullRequestUser, SubmitReviewInput, UnsupportedResult, UpdatePullRequestInput,
 } from '../types';
 import { httpJson, HttpJsonError } from '../httpJson';
+import { summarizeChecksPerPr } from '../checksSummary';
 import { formatApiError } from '../formatApiError';
 
 const PAGE_SIZE = 30;
@@ -158,6 +160,7 @@ function mapPr(pr: RawGiteaPr): PullRequestSummary {
     assignees: (pr.assignees ?? []).map(u => ({ id: u.login, username: u.login, avatarUrl: u.avatar_url })),
     reviewers: (pr.requested_reviewers ?? []).map(u => ({ id: u.login, username: u.login, avatarUrl: u.avatar_url })),
     labels: (pr.labels ?? []).map(l => ({ id: l.name, name: l.name, color: l.color.replace(/^#/, '') })),
+    headSha: pr.head.sha,
   };
 }
 
@@ -393,6 +396,10 @@ export class GiteaProvider implements PullRequestProvider {
     }));
   }
 
+  async getChecksSummaries(owner: string, repo: string, prs: PullRequestSummary[]): Promise<Map<number, PullRequestChecksSummary>> {
+    return summarizeChecksPerPr(prs, headSha => this.listChecks(owner, repo, headSha));
+  }
+
   async getPullRequestDetail(owner: string, repo: string, number: number): Promise<PullRequestDetail> {
     const headers = await this.headers();
     const { data } = await httpJson<RawGiteaPr>(`${this.apiBase()}/repos/${owner}/${repo}/pulls/${number}`, { headers });
@@ -433,7 +440,7 @@ export class GiteaProvider implements PullRequestProvider {
       await httpJson(`${this.apiBase()}/repos/${owner}/${repo}/pulls/${number}`, {
         method: 'PATCH',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: input.title, base: input.targetBranch }),
+        body: JSON.stringify({ title: input.title, base: input.targetBranch, body: input.description }),
       });
       return { ok: true };
     } catch (err) {
@@ -594,11 +601,11 @@ export class GiteaProvider implements PullRequestProvider {
   }
 
   async hideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Gitea has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Gitea has no concept of hiding a comment.') };
   }
 
   async unhideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'Gitea has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('Gitea has no concept of hiding a comment.') };
   }
 
   async listChangedFiles(owner: string, repo: string, number: number): Promise<ChangedFile[]> {
@@ -731,7 +738,7 @@ export class GiteaProvider implements PullRequestProvider {
 
   async submitReview(owner: string, repo: string, number: number, input: SubmitReviewInput): Promise<ActionResult | UnsupportedResult> {
     if ((input.event === 'requestChanges' || input.event === 'comment') && !input.body?.trim()) {
-      return { ok: false, error: 'A comment body is required for this review type' };
+      return { ok: false, error: vscode.l10n.t('A comment body is required for this review type') };
     }
     const headers = await this.headers();
     try {

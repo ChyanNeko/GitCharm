@@ -1,10 +1,12 @@
+import * as vscode from 'vscode';
 import type {
   ActionResult, ChangedFile, CiCheck, CiStatus, CreatePullRequestInput, CreatePullRequestResult, FileDiffContent, FileDiffRefs,
-  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities,
+  ListPullRequestsOptions, ListPullRequestsResult, MergeStrategy, PostCommentResult, PullRequestCapabilities, PullRequestChecksSummary,
   PullRequestComment, PullRequestCommit, PullRequestDetail, PullRequestEvent, PullRequestLabel, PullRequestProvider,
   PullRequestStateFilter, PullRequestSummary, PullRequestUser, SubmitReviewInput, UnsupportedResult, UpdatePullRequestInput,
 } from '../types';
 import { httpJson, HttpJsonError } from '../httpJson';
+import { summarizeChecksPerPr } from '../checksSummary';
 import { formatApiError } from '../formatApiError';
 
 const PAGE_SIZE = 30;
@@ -50,6 +52,7 @@ interface RawGitLabMr {
   created_at: string;
   updated_at: string;
   user_notes_count?: number;
+  sha?: string;
   /** Present even on the list endpoint (names only — colors need a separate lookup, see getCachedProjectLabels). */
   labels?: string[];
 }
@@ -181,6 +184,7 @@ function mapMr(mr: RawGitLabMr, sourceProjectPath?: string, labels?: PullRequest
     updatedAt: mr.updated_at,
     commentCount: mr.user_notes_count,
     labels,
+    headSha: mr.sha,
   };
 }
 
@@ -497,6 +501,10 @@ export class GitLabProvider implements PullRequestProvider {
     }));
   }
 
+  async getChecksSummaries(owner: string, repo: string, prs: PullRequestSummary[]): Promise<Map<number, PullRequestChecksSummary>> {
+    return summarizeChecksPerPr(prs, headSha => this.listChecks(owner, repo, headSha));
+  }
+
   async updatePullRequest(owner: string, repo: string, number: number, input: UpdatePullRequestInput): Promise<ActionResult> {
     const headers = await this.headers();
     const projectId = this.projectId(owner, repo);
@@ -504,7 +512,7 @@ export class GitLabProvider implements PullRequestProvider {
       await httpJson(`${this.apiBase()}/projects/${projectId}/merge_requests/${number}`, {
         method: 'PUT',
         headers: { ...headers, 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title: input.title, target_branch: input.targetBranch }),
+        body: JSON.stringify({ title: input.title, target_branch: input.targetBranch, description: input.description }),
       });
       return { ok: true };
     } catch (err) {
@@ -702,11 +710,11 @@ export class GitLabProvider implements PullRequestProvider {
   }
 
   async hideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'GitLab has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('GitLab has no concept of hiding a comment.') };
   }
 
   async unhideComment(): Promise<UnsupportedResult> {
-    return { ok: false, unsupported: true, error: 'GitLab has no concept of hiding a comment.' };
+    return { ok: false, unsupported: true, error: vscode.l10n.t('GitLab has no concept of hiding a comment.') };
   }
 
   async listChangedFiles(owner: string, repo: string, number: number): Promise<ChangedFile[]> {
@@ -821,12 +829,12 @@ export class GitLabProvider implements PullRequestProvider {
 
   async submitReview(owner: string, repo: string, number: number, input: SubmitReviewInput): Promise<ActionResult | UnsupportedResult> {
     if (input.event === 'comment') {
-      if (!input.body?.trim()) return { ok: false, error: 'A comment body is required for this review type' };
+      if (!input.body?.trim()) return { ok: false, error: vscode.l10n.t('A comment body is required for this review type') };
       const result = await this.postComment(owner, repo, number, input.body);
       return result.ok ? { ok: true } : { ok: false, error: result.error };
     }
     if (input.event !== 'approve') {
-      return { ok: false, unsupported: true, error: 'GitLab does not support requesting changes on a merge request' };
+      return { ok: false, unsupported: true, error: vscode.l10n.t('GitLab does not support requesting changes on a merge request') };
     }
     const headers = await this.headers();
     const projectId = this.projectId(owner, repo);

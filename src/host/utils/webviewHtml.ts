@@ -1,6 +1,7 @@
 import * as vscode from 'vscode';
 import * as crypto from 'crypto';
 import * as fs from 'fs';
+import { avatarsEnabled } from './avatarCache';
 
 export function generateNonce(): string {
   return crypto.randomBytes(16).toString('base64');
@@ -9,11 +10,16 @@ export function generateNonce(): string {
 export function getWebviewHtml(
   webview: vscode.Webview,
   extensionUri: vscode.Uri,
-  appName: 'commitPanel' | 'gitLog' | 'mergeEditor' | 'undockedPanel' | 'pullRequestCreate' | 'pullRequestDetail' | 'commitFullDetail' | 'aiExplainDetail',
+  appName: 'commitPanel' | 'gitLog' |'undockedPanel' | 'pullRequestCreate' | 'pullRequestDetail' | 'commitFullDetail' | 'aiExplainDetail',
   title: string,
   initialConfig?: Record<string, unknown>,
 ): string {
   const nonce = generateNonce();
+
+  // Read by src/webview/shared/l10n.ts. Escape "<" so a translation containing "</script>"
+  // can't terminate the inline script.
+  const l10nJson = JSON.stringify({ bundle: vscode.l10n.bundle, locale: vscode.env.language })
+    .replace(/</g, '\\u003c');
 
   const jsPath = vscode.Uri.joinPath(extensionUri, 'out', 'webview', appName, 'index.js');
   // Cache-bust with the bundle's mtime: some webviews (esp. sidebar WebviewViews, which can
@@ -26,21 +32,16 @@ export function getWebviewHtml(
     vscode.Uri.joinPath(extensionUri, 'media', 'codicons', 'codicon.css')
   );
 
-  // Monaco loads from CDN (jsdelivr) by default via @monaco-editor/react.
-  // Phase 4 will switch to bundled Monaco and tighten this CSP.
-  const monacoCdn = 'https://cdn.jsdelivr.net';
   const csp = [
     `default-src 'none'`,
     `img-src ${webview.cspSource} data: https:`,
-    `style-src ${webview.cspSource} 'unsafe-inline' ${monacoCdn}`,
-    `script-src 'nonce-${nonce}' ${monacoCdn}`,
-    `worker-src blob:`,
-    `font-src ${webview.cspSource} data: ${monacoCdn}`,
-    `connect-src ${monacoCdn}`,
+    `style-src ${webview.cspSource} 'unsafe-inline'`,
+    `script-src 'nonce-${nonce}'`,
+    `font-src ${webview.cspSource} data:`,
   ].join('; ');
 
   return `<!DOCTYPE html>
-<html lang="en">
+<html lang="${vscode.env.language}">
 <head>
   <meta charset="UTF-8">
   <meta name="viewport" content="width=device-width, initial-scale=1.0">
@@ -128,6 +129,11 @@ export function getWebviewHtml(
     .markdown-body h1:first-child, .markdown-body h2:first-child, .markdown-body h3:first-child,
     .markdown-body h4:first-child, .markdown-body h5:first-child, .markdown-body h6:first-child { margin-top: 0; }
     .markdown-body p { margin: 0 0 10px; }
+    .markdown-body .pr-mention {
+      font-weight: 600; padding: 0 2px; border-radius: 3px; white-space: nowrap;
+      color: var(--vscode-textLink-foreground);
+      background: color-mix(in srgb, var(--vscode-textLink-foreground) 12%, transparent);
+    }
     .markdown-body p:last-child { margin-bottom: 0; }
     .markdown-body ul, .markdown-body ol { margin: 0 0 10px; padding-left: 24px; }
     .markdown-body li { margin: 2px 0; }
@@ -164,6 +170,12 @@ export function getWebviewHtml(
     .gitcharm-tiptap-content p.is-editor-empty:first-child::before {
       content: attr(data-placeholder); float: left; height: 0; pointer-events: none; opacity: 0.5;
     }
+    .gitcharm-tiptap-content th, .gitcharm-tiptap-content td { min-width: 60px; vertical-align: top; position: relative; }
+    .gitcharm-tiptap-content th p, .gitcharm-tiptap-content td p { margin: 0; }
+    .gitcharm-tiptap-content .selectedCell::after {
+      content: ''; position: absolute; inset: 0; pointer-events: none;
+      background: color-mix(in srgb, var(--vscode-focusBorder) 20%, transparent);
+    }
 
     /* ── PR detail Overview tab: main content + sidebar, collapsing to stacked ── */
     .pr-overview-layout {
@@ -186,6 +198,24 @@ export function getWebviewHtml(
       .commit-detail-two-column-right { min-height: 300px; }
     }
 
+    /* ── Secondary buttons (Cancel, Compare, Close…) — same look as the Commit panel's Stash/Shelve
+       button (UnifiedCommitForm's DropdownButton, variant "secondary"). Components keep only layout
+       (padding, font size, gap) inline: an inline background/color/border would override this. */
+    .gc-btn-secondary {
+      background-color: var(--vscode-button-secondaryBackground, rgba(100,100,100,0.2));
+      color: var(--vscode-button-secondaryForeground, var(--vscode-foreground));
+      border: 1px solid var(--vscode-extensionButton-border, rgba(128,128,128,0.35));
+      border-radius: 4px;
+      font-family: var(--vscode-font-family);
+      cursor: pointer;
+      user-select: none;
+      white-space: nowrap;
+      outline: none;
+    }
+    .gc-btn-secondary:not(:disabled):hover { background-color: var(--vscode-button-secondaryHoverBackground, rgba(100,100,100,0.35)); }
+    .gc-btn-secondary:focus-visible { outline: 1px solid var(--vscode-focusBorder); outline-offset: 1px; }
+    .gc-btn-secondary:disabled { opacity: 0.4; cursor: not-allowed; }
+
     /* ── PR detail: hover feedback on every button ──────────────────────────────
        Buttons with a transparent/no background (icon buttons, toolbar items — tagged
        with the "icon-btn" class) get a theme-aware tint; buttons with their own solid
@@ -198,6 +228,7 @@ export function getWebviewHtml(
       background-color: color-mix(in srgb, var(--vscode-foreground) 10%, transparent);
       filter: none;
     }
+    .pr-detail-root button.gc-btn-secondary:not(:disabled):hover { filter: none; }
     /* Dropdown menu rows (Checkout/Merge menus) are clickable divs, not <button>s, so they get their own rule. */
     .pr-detail-root .menu-item { cursor: pointer; }
     .pr-detail-root .menu-item:hover { background-color: var(--vscode-list-hoverBackground); }
@@ -230,6 +261,16 @@ export function getWebviewHtml(
       box-shadow: 0 0 0 1px color-mix(in srgb, var(--vscode-button-background) 70%, transparent),
         0 0 18px 4px color-mix(in srgb, var(--vscode-button-background) 55%, transparent);
     }
+    /* Same pulse as the commit message textarea while AI generates it (see inputStyles.generatingFieldStyle). */
+    @keyframes gs-ai-generating-pulse { 0%, 100% { opacity: 0.6; } 50% { opacity: 0.35; } }
+    /* For fields whose content pulses separately from their frame (the markdown editor, whose toolbar must not
+       pulse): the border follows the same rhythm on its own. */
+    @keyframes gs-ai-generating-border-pulse {
+      0%, 100% { border-color: color-mix(in srgb, var(--vscode-focusBorder) 60%, transparent); }
+      50% { border-color: color-mix(in srgb, var(--vscode-focusBorder) 35%, transparent); }
+    }
+    /* Same hover as the commit message's generate button ([data-autopilot-btn] in UnifiedCommitForm). */
+    [data-ai-generate-btn]:not([disabled]):hover { background: var(--vscode-toolbar-hoverBackground) !important; opacity: 1 !important; border-radius: 3px; }
     @keyframes ai-explain-glow {
       0%, 100% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 0 0 color-mix(in srgb, var(--vscode-button-background) 45%, transparent); }
       50% { box-shadow: 0 2px 8px rgba(0, 0, 0, 0.35), 0 0 14px 3px color-mix(in srgb, var(--vscode-button-background) 45%, transparent); }
@@ -241,7 +282,9 @@ export function getWebviewHtml(
 </head>
 <body>
   <div id="root"></div>
-  <script nonce="${nonce}">if (/Cursor/.test(navigator.userAgent)) document.body.classList.add('cursor-host');${initialConfig ? `\nwindow.__INITIAL_CONFIG__ = ${JSON.stringify(initialConfig)};` : ''}</script>
+  <script nonce="${nonce}">if (/Cursor/.test(navigator.userAgent)) document.body.classList.add('cursor-host');
+window.__GITCHARM_AVATARS__ = ${avatarsEnabled()};
+window.__L10N__ = ${l10nJson};${initialConfig ? `\nwindow.__INITIAL_CONFIG__ = ${JSON.stringify(initialConfig)};` : ''}</script>
   <script nonce="${nonce}" type="module" src="${jsUri}"></script>
 </body>
 </html>`;
