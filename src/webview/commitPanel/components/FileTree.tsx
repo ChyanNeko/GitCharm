@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { FileStatus, GitFileStatus } from '../../shared/types';
 import type { ViewMode } from '../store/commitStore';
 import type { IconThemeData } from '../../../host/types/messages';
@@ -7,6 +7,7 @@ import { FileIcon } from '../../shared/FileIcon';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
 import { TreeGuideLines, useTreeGuideHoverStyle } from '../../shared/TreeGuides';
 import { focusOnHover } from '../../shared/keyboardNav';
+import { VirtualRows } from '../../shared/VirtualRows';
 import * as l10n from '@vscode/l10n';
 
 interface Props {
@@ -31,6 +32,7 @@ interface Props {
   ctxFile?: { repoId: string; path: string } | null;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 const STATUS_COLORS: Record<GitFileStatus, string> = {
@@ -56,18 +58,21 @@ const ICON_SIZE = 16;
 interface TreeDir { kind: 'dir'; name: string; path: string; children: TreeNode[] }
 interface TreeFile { kind: 'file'; name: string; file: FileStatus }
 type TreeNode = TreeDir | TreeFile;
+type VisibleRow = { kind: 'dir'; node: TreeDir; depth: number } | { kind: 'file'; file: FileStatus; depth: number };
 
 function buildTree(files: FileStatus[]): TreeNode[] {
   const root: TreeDir = { kind: 'dir', name: '', path: '', children: [] };
+  const dirs = new Map<string, TreeDir>();
   for (const file of files) {
     const parts = file.path.split('/');
     let node = root;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       const dirPath = parts.slice(0, i + 1).join('/');
-      let child = node.children.find((c): c is TreeDir => c.kind === 'dir' && c.name === part);
+      let child = dirs.get(dirPath);
       if (!child) {
         child = { kind: 'dir', name: part, path: dirPath, children: [] };
+        dirs.set(dirPath, child);
         node.children.push(child);
       }
       node = child;
@@ -103,6 +108,21 @@ function collectFiles(node: TreeDir): FileStatus[] {
     else result.push(...collectFiles(child));
   }
   return result;
+}
+
+function visibleRows(nodes: TreeNode[], repoId: string, isCollapsed: Props['isCollapsed']): VisibleRow[] {
+  const rows: VisibleRow[] = [];
+  const visit = (children: TreeNode[], depth: number) => {
+    for (const node of children) {
+      if (node.kind === 'file') rows.push({ kind: 'file', file: node.file, depth });
+      else {
+        rows.push({ kind: 'dir', node, depth });
+        if (!isCollapsed(`${repoId}:${node.path}`)) visit(node.children, depth + 1);
+      }
+    }
+  };
+  visit(nodes, 0);
+  return rows;
 }
 
 // ── Checkbox ───────────────────────────────────────────────────────────────
@@ -188,11 +208,6 @@ function TreeDirNode({ node, depth, ...shared }: { node: TreeDir; depth: number 
           <span style={styles.dirCount}>{allFiles.length}</span>
         </div>
       </div>
-      {open && node.children.map((child, i) =>
-        child.kind === 'dir'
-          ? <TreeDirNode key={i} node={child} depth={depth + 1} {...shared} />
-          : <FileRow key={i} file={child.file} depth={depth + 1} {...shared} />
-      )}
     </div>
   );
 }
@@ -265,30 +280,26 @@ function FileRow({ file, depth = 0, ...shared }: { file: FileStatus; depth?: num
 
 // ── Public component ───────────────────────────────────────────────────────
 
-export function FileTree({ repoId, files, iconTheme, selectedFile, ctxFile, onSelect, onToggleFile, onSetFiles, isFileSelected, isCollapsed, toggleCollapsed, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, viewMode, basePad = DEFAULT_BASE_PAD, activeFolderPath, onMultiSelect, multiSelectedFiles }: Props) {
+export function FileTree({ repoId, files, iconTheme, selectedFile, ctxFile, onSelect, onToggleFile, onSetFiles, isFileSelected, isCollapsed, toggleCollapsed, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, viewMode, basePad = DEFAULT_BASE_PAD, activeFolderPath, onMultiSelect, multiSelectedFiles, scrollRef }: Props) {
   useTreeGuideHoverStyle();
-  if (files.length === 0) return null;
+  const tree = useMemo(() => viewMode === 'tree' ? buildTree(files) : [], [files, viewMode]);
+  const rows = viewMode === 'tree'
+    ? visibleRows(tree, repoId, isCollapsed)
+    : files.map((file): VisibleRow => ({ kind: 'file', file, depth: 0 }));
+  if (rows.length === 0) return null;
 
   const shared: SharedProps = { repoId, iconTheme, selectedFile, ctxFile, onSelect, onToggleFile, onSetFiles, isFileSelected, isCollapsed, toggleCollapsed, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, basePad, activeFolderPath, onMultiSelect, multiSelectedFiles };
 
-  if (viewMode === 'tree') {
-    const nodes = buildTree(files);
-    return (
-      <div style={styles.container} data-filetree-container>
-        {nodes.map((node, i) =>
-          node.kind === 'dir'
-            ? <TreeDirNode key={i} node={node} depth={0} {...shared} />
-            : <FileRow key={i} file={node.file} depth={0} {...shared} />
-        )}
-      </div>
-    );
-  }
-
   return (
-    <div style={styles.container} data-filetree-container>
-      {files.map((file) => (
-        <FileRow key={`${file.repoId}-${file.path}`} file={file} depth={0} {...shared} />
-      ))}
+    <div style={styles.container}>
+      <VirtualRows
+        rows={rows}
+        scrollRef={scrollRef}
+        getKey={row => row.kind === 'dir' ? `dir:${row.node.path}` : `file:${row.file.path}`}
+        renderRow={row => row.kind === 'dir'
+          ? <TreeDirNode node={row.node} depth={row.depth} {...shared} />
+          : <FileRow file={row.file} depth={row.depth} {...shared} />}
+      />
     </div>
   );
 }

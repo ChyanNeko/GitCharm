@@ -1,9 +1,10 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { IconThemeData } from '../../host/types/messages';
 import { Codicon } from './Codicon';
 import { FileIcon } from './FileIcon';
 import { TreeGuideLines, useTreeGuideHoverStyle } from './TreeGuides';
 import { focusOnHover } from './keyboardNav';
+import { VirtualRows } from './VirtualRows';
 
 /**
  * Shared file-tree renderer used everywhere a set of changed files needs to be shown nested by
@@ -22,18 +23,21 @@ export interface GenericTreeFile {
 interface TreeDir<F extends GenericTreeFile> { kind: 'dir'; name: string; path: string; children: TreeNode<F>[] }
 interface TreeFile<F extends GenericTreeFile> { kind: 'file'; name: string; file: F }
 type TreeNode<F extends GenericTreeFile> = TreeDir<F> | TreeFile<F>;
+type VisibleRow<F extends GenericTreeFile> = { kind: 'dir'; node: TreeDir<F>; depth: number } | { kind: 'file'; file: F; depth: number };
 
 function buildTree<F extends GenericTreeFile>(files: F[]): TreeNode<F>[] {
   const root: TreeDir<F> = { kind: 'dir', name: '', path: '', children: [] };
+  const dirs = new Map<string, TreeDir<F>>();
   for (const file of files) {
     const parts = file.path.split('/');
     let node = root;
     for (let i = 0; i < parts.length - 1; i++) {
       const part = parts[i];
       const dirPath = parts.slice(0, i + 1).join('/');
-      let child = node.children.find((c): c is TreeDir<F> => c.kind === 'dir' && c.name === part);
+      let child = dirs.get(dirPath);
       if (!child) {
         child = { kind: 'dir', name: part, path: dirPath, children: [] };
+        dirs.set(dirPath, child);
         node.children.push(child);
       }
       node = child;
@@ -74,6 +78,21 @@ function collectFiles<F extends GenericTreeFile>(node: TreeDir<F>): F[] {
     else result.push(...collectFiles(child));
   }
   return result;
+}
+
+function visibleRows<F extends GenericTreeFile>(nodes: TreeNode<F>[], isDirOpen: (path: string) => boolean): VisibleRow<F>[] {
+  const rows: VisibleRow<F>[] = [];
+  const visit = (children: TreeNode<F>[], depth: number) => {
+    for (const node of children) {
+      if (node.kind === 'file') rows.push({ kind: 'file', file: node.file, depth });
+      else {
+        rows.push({ kind: 'dir', node, depth });
+        if (isDirOpen(node.path)) visit(node.children, depth + 1);
+      }
+    }
+  };
+  visit(nodes, 0);
+  return rows;
 }
 
 // ── Layout constants ────────────────────────────────────────────────────────
@@ -129,6 +148,8 @@ export interface GenericFileTreeProps<F extends GenericTreeFile> {
   renderFileActions?: (file: F, hovered: boolean) => React.ReactNode;
   /** Extra hover-revealed controls rendered at the right edge of a directory row, before the file count. */
   renderDirActions?: (files: F[], hovered: boolean) => React.ReactNode;
+  /** Shared commit-panel viewport. Large lists are windowed only when this is set. */
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function LineStats({ added, removed }: { added?: number; removed?: number }) {
@@ -223,37 +244,28 @@ function TreeDirNode<F extends GenericTreeFile>({ node, depth, basePad, ...share
           <span style={styles.dirCount}>{allFiles.length}</span>
         </div>
       </div>
-      {open && node.children.map((child, i) =>
-        child.kind === 'dir'
-          ? <TreeDirNode key={i} node={child} depth={depth + 1} basePad={basePad} {...shared} />
-          : <FileRow key={i} file={child.file} depth={depth + 1} basePad={basePad} {...shared} />
-      )}
     </div>
   );
 }
 
-export function GenericFileTree<F extends GenericTreeFile>({ files, viewMode, compact = false, flatNoSpacer = compact, basePad = compact ? COMPACT_BASE_PAD : DEFAULT_BASE_PAD, ...shared }: GenericFileTreeProps<F>) {
+export function GenericFileTree<F extends GenericTreeFile>({ files, viewMode, compact = false, flatNoSpacer = compact, basePad = compact ? COMPACT_BASE_PAD : DEFAULT_BASE_PAD, scrollRef, ...shared }: GenericFileTreeProps<F>) {
   useTreeGuideHoverStyle();
-  if (files.length === 0) return null;
-
-  if (viewMode === 'tree') {
-    const nodes = buildTree(files);
-    return (
-      <div style={styles.container} data-filetree-container>
-        {nodes.map((node, i) =>
-          node.kind === 'dir'
-            ? <TreeDirNode key={i} node={node} depth={0} basePad={basePad} {...shared} />
-            : <FileRow key={i} file={node.file} depth={0} basePad={basePad} {...shared} />
-        )}
-      </div>
-    );
-  }
+  const tree = useMemo(() => viewMode === 'tree' ? buildTree(files) : [], [files, viewMode]);
+  const rows = viewMode === 'tree'
+    ? visibleRows(tree, shared.isDirOpen)
+    : files.map((file): VisibleRow<F> => ({ kind: 'file', file, depth: 0 }));
+  if (rows.length === 0) return null;
 
   return (
-    <div style={styles.container} data-filetree-container>
-      {files.map((file, i) => (
-        <FileRow key={i} file={file} depth={0} basePad={basePad} noSpacer={flatNoSpacer} {...shared} />
-      ))}
+    <div style={styles.container}>
+      <VirtualRows
+        rows={rows}
+        scrollRef={scrollRef}
+        getKey={row => row.kind === 'dir' ? `dir:${row.node.path}` : `file:${row.file.path}`}
+        renderRow={row => row.kind === 'dir'
+          ? <TreeDirNode node={row.node} depth={row.depth} basePad={basePad} {...shared} />
+          : <FileRow file={row.file} depth={row.depth} basePad={basePad} noSpacer={viewMode === 'flat' && flatNoSpacer} {...shared} />}
+      />
     </div>
   );
 }

@@ -47,7 +47,7 @@ export async function openFileHistoryPanel(
   const nonce = generateNonce();
 
   const panel = vscode.window.createWebviewPanel(
-    'gitcharmFileHistory',
+    'gitchyanFileHistory',
     vscode.l10n.t('History: {0}', fileName),
     vscode.ViewColumn.One,
     {
@@ -132,7 +132,7 @@ export async function openFileHistoryPanel(
       if (logPanel) {
         logPanel.selectCommit(msg.hash, meta.id);
       } else {
-        await vscode.commands.executeCommand('gitcharm.openLog');
+        await vscode.commands.executeCommand('gitchyan.openLog');
       }
     }
   });

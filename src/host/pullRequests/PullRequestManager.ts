@@ -76,7 +76,7 @@ async function getGitHubToken(githubAccountId?: string): Promise<string | undefi
 }
 
 function getHostProviderOverrides(): Record<string, string> {
-  return vscode.workspace.getConfiguration('gitcharm').get<Record<string, string>>('pullRequests.hostProviderOverrides', {});
+  return vscode.workspace.getConfiguration('gitchyan').get<Record<string, string>>('pullRequests.hostProviderOverrides', {});
 }
 
 function sameFilters(a: PullRequestFilters, b: PullRequestFilters): boolean {
@@ -129,8 +129,8 @@ function dropRedundantEvents(events: PullRequestEvent[]): PullRequestEvent[] {
   });
 }
 
-const REPO_ACCOUNT_BINDING_KEY = 'gitcharm.pullRequests.repoAccountBindings';
-const REPO_PR_FILTERS_KEY = 'gitcharm.pullRequests.repoFilters';
+const REPO_ACCOUNT_BINDING_KEY = 'gitchyan.pullRequests.repoAccountBindings';
+const REPO_PR_FILTERS_KEY = 'gitchyan.pullRequests.repoFilters';
 const MENTION_CANDIDATES_TTL_MS = 5 * 60 * 1000;
 
 export class PullRequestManager {

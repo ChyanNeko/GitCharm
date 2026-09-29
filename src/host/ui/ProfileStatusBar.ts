@@ -14,7 +14,7 @@ export class ProfileStatusBar implements vscode.Disposable {
     private readonly avatarCacheDir?: string,
   ) {
     this.statusBarItem = vscode.window.createStatusBarItem(vscode.StatusBarAlignment.Left, 99);
-    this.statusBarItem.command = 'gitcharm.manageProfiles';
+    this.statusBarItem.command = 'gitchyan.manageProfiles';
     this.statusBarItem.show();
 
     this.disposables.push(

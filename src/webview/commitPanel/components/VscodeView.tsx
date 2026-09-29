@@ -1,4 +1,4 @@
-import React, { useState } from 'react';
+import React, { useMemo, useState } from 'react';
 import type { FileStatus, RepoMeta, RepoStatus } from '../../shared/types';
 import type { ViewMode } from '../store/commitStore';
 import type { IconThemeData } from '../../../host/types/messages';
@@ -42,6 +42,7 @@ interface Props {
   onOpenAllChanges?: (repoId: string) => void;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 // ── Constants ────────────────────────────────────────────────────────────
@@ -109,16 +110,20 @@ interface RepoSubGroupProps {
   mainWorktreePath?: string;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles }: RepoSubGroupProps) {
+function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles, scrollRef }: RepoSubGroupProps) {
   const repoId = repoStatus.repoId;
   const collapseKey = `vscode-repo-${staged ? 'staged' : 'unstaged'}:${repoId}`;
-  const dirKeys: string[] = [];
-  for (const f of files) {
-    const parts = f.path.split('/');
-    for (let i = 1; i < parts.length; i++) dirKeys.push(`vscode-${staged ? 'staged' : 'unstaged'}-${repoId}:${parts.slice(0, i).join('/')}`);
-  }
+  const dirKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const f of files) {
+      const parts = f.path.split('/');
+      for (let i = 1; i < parts.length; i++) keys.add(`vscode-${staged ? 'staged' : 'unstaged'}-${repoId}:${parts.slice(0, i).join('/')}`);
+    }
+    return Array.from(keys);
+  }, [files, staged, repoId]);
   const expanded = viewMode === 'tree' && hasExpandedDirs(dirKeys);
   const isEmpty = files.length === 0;
   // Empty repos default to collapsed; key presence means "explicitly opened"
@@ -222,6 +227,7 @@ function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewM
           ) : (
             <GenericFileTree<FileStatus>
               files={files}
+              scrollRef={scrollRef}
               viewMode={viewMode}
               flatNoSpacer
               iconTheme={iconTheme}
@@ -333,7 +339,7 @@ export function VscodeView({
   onStageFiles, onUnstageFiles, onStageAll, onUnstageAll,
   onRepoContextMenu, onBranchClick, onOpenStagedChanges, onOpenUnstagedChanges, iconTheme, activeFolderPath,
   selectedRepos, onToggleRepoSelection, onOpenAllChanges,
-  onMultiSelect, multiSelectedFiles,
+  onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const metaMap = new Map(repoMetas.map(m => [m.id, m]));
   const STAGED_COLLAPSE_KEY = 'vscode-section:staged';
@@ -437,6 +443,7 @@ export function VscodeView({
               mainWorktreePath={meta?.mainWorktreePath}
               onMultiSelect={onMultiSelect}
               multiSelectedFiles={multiSelectedFiles}
+              scrollRef={scrollRef}
             />
           );
         });
@@ -502,6 +509,7 @@ export function VscodeView({
               mainWorktreePath={meta?.mainWorktreePath}
               onMultiSelect={onMultiSelect}
               multiSelectedFiles={multiSelectedFiles}
+              scrollRef={scrollRef}
             />
           );
         });

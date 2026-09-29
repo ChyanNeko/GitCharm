@@ -35,7 +35,7 @@ async function maybeAskAboutAvatars(globalState: vscode.Memento): Promise<void> 
   const ENABLE = vscode.l10n.t('Enable avatars');
   const KEEP = vscode.l10n.t('Keep disabled');
   const picked = await vscode.window.showInformationMessage(
-    vscode.l10n.t('GitCharm can show author avatars from Gravatar. This sends a hash of each commit author\'s email to gravatar.com, which can reveal those addresses. Change this later in Settings under "{0}".', 'gitcharm.avatars.enabled'),
+    vscode.l10n.t('GitCharm can show author avatars from Gravatar. This sends a hash of each commit author\'s email to gravatar.com, which can reveal those addresses. Change this later in Settings under "{0}".', 'gitchyan.avatars.enabled'),
     ENABLE,
     KEEP,
   );
@@ -43,7 +43,7 @@ async function maybeAskAboutAvatars(globalState: vscode.Memento): Promise<void> 
   await globalState.update(ASKED_KEY, true);
   if (picked === ENABLE) {
     suppressAvatarReloadPrompt = true;
-    await vscode.workspace.getConfiguration('gitcharm').update('avatars.enabled', true, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration('gitchyan').update('avatars.enabled', true, vscode.ConfigurationTarget.Global);
   }
 }
 
@@ -51,7 +51,7 @@ async function maybeAskAboutAvatars(globalState: vscode.Memento): Promise<void> 
 let suppressAvatarReloadPrompt = false;
 function watchAvatarSetting(): vscode.Disposable {
   return vscode.workspace.onDidChangeConfiguration(async e => {
-    if (!e.affectsConfiguration('gitcharm.avatars.enabled')) return;
+    if (!e.affectsConfiguration('gitchyan.avatars.enabled')) return;
     if (suppressAvatarReloadPrompt) { suppressAvatarReloadPrompt = false; return; }
     const RELOAD = vscode.l10n.t('Reload Window');
     const picked = await vscode.window.showInformationMessage(vscode.l10n.t('Reload the window to apply the GitCharm avatar setting.'), RELOAD);
@@ -94,7 +94,7 @@ async function showViewModeQuickpick(globalState: vscode.Memento): Promise<void>
   await globalState.update(SHOWN_KEY, true);
 
   if (picked) {
-    await vscode.workspace.getConfiguration('gitcharm').update('changesViewMode', picked.value, vscode.ConfigurationTarget.Global);
+    await vscode.workspace.getConfiguration('gitchyan').update('changesViewMode', picked.value, vscode.ConfigurationTarget.Global);
   }
 }
 
@@ -130,7 +130,7 @@ async function maybeShowSupportNotification(globalState: vscode.Memento): Promis
 }
 
 async function maybeNotifyUnpushedCommits(manager: WorkspaceGitManager, commitPanel: CommitPanelProvider): Promise<void> {
-  if (!vscode.workspace.getConfiguration('gitcharm').get<boolean>('notifyOnUnpushedCommits', true)) return;
+  if (!vscode.workspace.getConfiguration('gitchyan').get<boolean>('notifyOnUnpushedCommits', true)) return;
 
   const metas = manager.getRepoMetas();
   const countResults = await Promise.allSettled(
@@ -157,7 +157,7 @@ async function maybeNotifyUnpushedCommits(manager: WorkspaceGitManager, commitPa
   const picked = await vscode.window.showInformationMessage(message, goToPush, vscode.l10n.t('Dismiss'));
 
   if (picked === goToPush) {
-    await vscode.commands.executeCommand('gitcharm.commitPanel.focus');
+    await vscode.commands.executeCommand('gitchyan.commitPanel.focus');
     commitPanel.switchToTab('push');
   }
 }
@@ -165,7 +165,7 @@ async function maybeNotifyUnpushedCommits(manager: WorkspaceGitManager, commitPa
 async function maybeNotifyIncomingCommits(manager: WorkspaceGitManager, globalState: vscode.Memento): Promise<void> {
   const DO_NOT_SHOW_KEY = 'doNotShowIncomingCommitsNotification';
   if (globalState.get<boolean>(DO_NOT_SHOW_KEY)) return;
-  if (!vscode.workspace.getConfiguration('gitcharm').get<boolean>('notifyOnIncomingCommits', true)) return;
+  if (!vscode.workspace.getConfiguration('gitchyan').get<boolean>('notifyOnIncomingCommits', true)) return;
 
   await manager.startupFetchPromise;
 
@@ -225,7 +225,7 @@ async function maybeNotifyIncomingCommits(manager: WorkspaceGitManager, globalSt
 }
 
 function notifyOrphanBranches(manager: WorkspaceGitManager, logPanel: GitLogPanelProvider, newlyOrphaned: Array<{ repoId: string; branchName: string }>): void {
-  if (!vscode.workspace.getConfiguration('gitcharm').get<boolean>('notifyOnOrphanBranches', true)) return;
+  if (!vscode.workspace.getConfiguration('gitchyan').get<boolean>('notifyOnOrphanBranches', true)) return;
   presentOrphanBranches(manager, logPanel, newlyOrphaned, 'lostAfterMerge');
 }
 
@@ -263,7 +263,6 @@ export function activate(context: vscode.ExtensionContext): void {
   badge.startLoading();
 
   const profileService = new GitProfileService(context, log);
-  profileService.autoInitIfEmpty();
 
   const patCredentialStore = new PatCredentialStore(context.secrets, context.globalState);
   const pullRequestManager = new PullRequestManager(manager, patCredentialStore, context.workspaceState);
@@ -310,7 +309,7 @@ export function activate(context: vscode.ExtensionContext): void {
   if (savedHidden.length > 0) badge.setHiddenRepoIds(savedHidden);
 
   const branchStatusBar = new BranchStatusBar(manager, () => {
-    vscode.commands.executeCommand('gitcharm.commitPanel.focus');
+    vscode.commands.executeCommand('gitchyan.commitPanel.focus');
   });
 
   commitPanel.setBranchStatusBar(branchStatusBar);
@@ -335,11 +334,11 @@ export function activate(context: vscode.ExtensionContext): void {
       },
     }),
     // Restore Commit Full Detail / Pull Request Detail panels left open across a window reload/restart
-    vscode.window.registerWebviewPanelSerializer('gitcharm.commitFullDetail', {
+    vscode.window.registerWebviewPanelSerializer('gitchyan.commitFullDetail', {
       deserializeWebviewPanel: (panel: vscode.WebviewPanel, state: unknown) =>
         deserializeCommitFullDetailPanel(panel, state, context.extensionUri, manager, profileService),
     }),
-    vscode.window.registerWebviewPanelSerializer('gitcharm.pullRequestDetail', {
+    vscode.window.registerWebviewPanelSerializer('gitchyan.pullRequestDetail', {
       deserializeWebviewPanel: (panel: vscode.WebviewPanel, state: unknown) =>
         pullRequestDetailPanel.restore(panel, state),
     }),
@@ -356,22 +355,22 @@ export function activate(context: vscode.ExtensionContext): void {
   registerCommands(context, commitPanel, logPanel, branchStatusBar, annotationController, profileStatusBar, manager, context.extensionUri, pullRequestManager);
 
   context.subscriptions.push(
-    vscode.commands.registerCommand('gitcharm.undock', () => {
+    vscode.commands.registerCommand('gitchyan.undock', () => {
       logPanel.triggerUndockPick();
     }),
-    vscode.commands.registerCommand('gitcharm.log.fetchAndRefresh', async () => {
+    vscode.commands.registerCommand('gitchyan.log.fetchAndRefresh', async () => {
       await logPanel.fetchAndRefresh();
       commitPanel.refresh();
     }),
-    vscode.commands.registerCommand('gitcharm.log.refresh', () => logPanel.reload()),
-    vscode.commands.registerCommand('gitcharm.log.clearFilters', () => logPanel.clearFilters()),
-    vscode.commands.registerCommand('gitcharm.log.hideFilters', () => logPanel.setLayoutPref('filtersHidden', true)),
-    vscode.commands.registerCommand('gitcharm.log.showFilters', () => logPanel.setLayoutPref('filtersHidden', false)),
-    vscode.commands.registerCommand('gitcharm.log.hideBranchSidebar', () => logPanel.setLayoutPref('sidebarHidden', true)),
-    vscode.commands.registerCommand('gitcharm.log.showBranchSidebar', () => logPanel.setLayoutPref('sidebarHidden', false)),
+    vscode.commands.registerCommand('gitchyan.log.refresh', () => logPanel.reload()),
+    vscode.commands.registerCommand('gitchyan.log.clearFilters', () => logPanel.clearFilters()),
+    vscode.commands.registerCommand('gitchyan.log.hideFilters', () => logPanel.setLayoutPref('filtersHidden', true)),
+    vscode.commands.registerCommand('gitchyan.log.showFilters', () => logPanel.setLayoutPref('filtersHidden', false)),
+    vscode.commands.registerCommand('gitchyan.log.hideBranchSidebar', () => logPanel.setLayoutPref('sidebarHidden', true)),
+    vscode.commands.registerCommand('gitchyan.log.showBranchSidebar', () => logPanel.setLayoutPref('sidebarHidden', false)),
   );
 
-  if (vscode.workspace.getConfiguration('gitcharm').get<boolean>('resetViewLocationsOnStartup', false)) {
+  if (vscode.workspace.getConfiguration('gitchyan').get<boolean>('resetViewLocationsOnStartup', false)) {
     void vscode.commands.executeCommand('workbench.action.resetViewLocations')
       .then(() => commitPanel.refresh(), () => undefined);
   }

@@ -12,11 +12,11 @@ import * as crypto from 'crypto';
  */
 
 /**
- * Author avatars are opt-in (`gitcharm.avatars.enabled`, default off): resolving one sends a hash
+ * Author avatars are opt-in (`gitchyan.avatars.enabled`, default off): resolving one sends a hash
  * of the author's email to gravatar.com, and those hashes can be reversed back to the address.
  */
 export function avatarsEnabled(): boolean {
-  return vscode.workspace.getConfiguration('gitcharm').get<boolean>('avatars.enabled', false) === true;
+  return vscode.workspace.getConfiguration('gitchyan').get<boolean>('avatars.enabled', false) === true;
 }
 
 const CACHE_SUBDIR = 'avatars';

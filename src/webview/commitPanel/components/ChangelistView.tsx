@@ -1,4 +1,4 @@
-import React from 'react';
+import React, { useMemo } from 'react';
 import type { ChangelistData, FileStatus, RepoMeta, RepoStatus } from '../../shared/types';
 import { CHANGELIST_DEFAULT_ID, CHANGELIST_UNVERSIONED_ID } from '../../shared/types';
 import type { ViewMode } from '../store/commitStore';
@@ -34,6 +34,7 @@ interface Props {
   ctxFile?: { repoId: string; path: string } | null;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function ChangelistView({
@@ -42,53 +43,44 @@ export function ChangelistView({
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
   onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, ctxFile,
-  onMultiSelect, multiSelectedFiles,
+  onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
-  // Build a lookup: repoId+path → changelist id
-  const fileToChangelist = new Map<string, string>();
-  for (const cl of changelists) {
-    for (const [repoId, paths] of Object.entries(cl.fileAssignments)) {
-      for (const p of paths) fileToChangelist.set(`${repoId}::${p}`, cl.id);
-    }
-  }
-
   const metaMap = new Map(repoMetas.map(m => [m.id, m]));
   const singleRepo = repos.length === 1;
   const multiRepo = repos.length >= 1;
 
-  // For each changelist, compute which files (from the live git status) belong to it
-  const changelistFiles = new Map<string, Map<string, FileStatus[]>>(); // clId → repoId → files
-  for (const cl of changelists) {
-    changelistFiles.set(cl.id, new Map());
-  }
-
-  for (const r of repos) {
-    // Unversioned Files: always computed live from git status (untracked files), never from fileAssignments
-    const unvMap = changelistFiles.get(CHANGELIST_UNVERSIONED_ID);
-    if (unvMap) {
-      const untracked = r.unstagedFiles.filter(f => f.status === 'untracked');
-      if (untracked.length > 0) {
-        unvMap.set(r.repoId, untracked);
+  // File membership changes with status/assignments, not with row selection or commit text.
+  const changelistFiles = useMemo(() => {
+    const fileToChangelist = new Map<string, string>();
+    for (const cl of changelists) {
+      for (const [repoId, paths] of Object.entries(cl.fileAssignments)) {
+        for (const p of paths) fileToChangelist.set(`${repoId}::${p}`, cl.id);
       }
     }
-
-    // All other files: staged + non-untracked unstaged, routed by fileAssignments
-    const fileMap = new Map<string, FileStatus>();
-    for (const f of r.stagedFiles) fileMap.set(f.path, f);
-    for (const f of r.unstagedFiles) {
-      if (f.status !== 'untracked') fileMap.set(f.path, f);
+    const groups = new Map<string, Map<string, FileStatus[]>>();
+    for (const cl of changelists) groups.set(cl.id, new Map());
+    for (const r of repos) {
+      const unvMap = groups.get(CHANGELIST_UNVERSIONED_ID);
+      if (unvMap) {
+        const untracked = r.unstagedFiles.filter(f => f.status === 'untracked');
+        if (untracked.length > 0) unvMap.set(r.repoId, untracked);
+      }
+      const fileMap = new Map<string, FileStatus>();
+      for (const f of r.stagedFiles) fileMap.set(f.path, f);
+      for (const f of r.unstagedFiles) {
+        if (f.status !== 'untracked') fileMap.set(f.path, f);
+      }
+      for (const file of fileMap.values()) {
+        const key = `${r.repoId}::${file.path}`;
+        const clId = fileToChangelist.get(key) ?? CHANGELIST_DEFAULT_ID;
+        const clMap = groups.get(clId);
+        if (!clMap) continue;
+        if (!clMap.has(r.repoId)) clMap.set(r.repoId, []);
+        clMap.get(r.repoId)!.push(file);
+      }
     }
-
-    for (const file of fileMap.values()) {
-      const key = `${r.repoId}::${file.path}`;
-      const clId = fileToChangelist.get(key) ?? CHANGELIST_DEFAULT_ID;
-
-      const clMap = changelistFiles.get(clId);
-      if (!clMap) continue;
-      if (!clMap.has(r.repoId)) clMap.set(r.repoId, []);
-      clMap.get(r.repoId)!.push(file);
-    }
-  }
+    return groups;
+  }, [changelists, repos]);
 
   const handleEmptyContextMenu = (e: React.MouseEvent) => {
     if (e.target !== e.currentTarget) return;
@@ -210,6 +202,7 @@ export function ChangelistView({
             ctxFile={ctxFile}
             onMultiSelect={onMultiSelect}
             multiSelectedFiles={multiSelectedFiles}
+            scrollRef={scrollRef}
           />
         );
       })}

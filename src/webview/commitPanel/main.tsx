@@ -1,10 +1,11 @@
 import { plural } from '../shared/l10n';
 import * as l10n from '@vscode/l10n';
 import { isImeComposing } from '../shared/ime';
-import React, { useEffect, useCallback, useRef, useState } from 'react';
+import React, { useEffect, useCallback, useMemo, useRef, useState } from 'react';
 import { createRoot } from 'react-dom/client';
 import { isEmbedded } from '../shared/embedded';
 import { useCommitStore } from './store/commitStore';
+import { useShallow } from 'zustand/react/shallow';
 import { ProjectGroup } from './components/ProjectGroup';
 import { ChangelistView } from './components/ChangelistView';
 import { VscodeView } from './components/VscodeView';
@@ -255,8 +256,10 @@ const CHANGELIST_HEADER_ITEMS_CUSTOM = (): ContextMenuEntry[] => [
 type TabId = 'changes' | 'shelf' | 'stash' | 'push' | 'worktree' | 'pullrequests';
 
 function App() {
-  const store = useCommitStore();
+  // The commit form subscribes to its own text. Typing must not re-render the file list.
+  const store = useCommitStore(useShallow(({ commitMessage: _commitMessage, ...rest }) => rest));
   const pendingRef = useRef<Map<string, (msg: HostToCommitMsg) => void>>(new Map());
+  const changesScrollRef = useRef<HTMLDivElement>(null);
 
   // ── Tab ───────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabId>('changes');
@@ -301,13 +304,20 @@ function App() {
   // Persist the commit message draft to workspaceState (host-side), debounced so typing
   // doesn't post a message per keystroke. Scoped per-workspace by the host, unlike the
   // webview's shared-origin localStorage.
-  const commitMessage = useCommitStore(s => s.commitMessage);
   useEffect(() => {
-    const timer = setTimeout(() => {
-      getVsCodeApi().postMessage({ type: 'COMMIT_PERSIST_MESSAGE', message: commitMessage } satisfies CommitToHostMsg);
-    }, 400);
-    return () => clearTimeout(timer);
-  }, [commitMessage]);
+    let timer: ReturnType<typeof setTimeout> | undefined;
+    const persist = (message: string) => {
+      if (timer) clearTimeout(timer);
+      timer = setTimeout(() => {
+        getVsCodeApi().postMessage({ type: 'COMMIT_PERSIST_MESSAGE', message } satisfies CommitToHostMsg);
+      }, 400);
+    };
+    persist(useCommitStore.getState().commitMessage);
+    const unsubscribe = useCommitStore.subscribe((next, previous) => {
+      if (next.commitMessage !== previous.commitMessage) persist(next.commitMessage);
+    });
+    return () => { unsubscribe(); if (timer) clearTimeout(timer); };
+  }, []);
 
   // ── Vscode mode: repo selection for commit ───────────────────────────────
   const [vscodeSelectedRepos, setVscodeSelectedRepos] = useState<Set<string>>(new Set());
@@ -895,9 +905,10 @@ function App() {
 
   const { hiddenRepoIds, hideReposWithoutChanges, repoSortMode } = store.viewAndSort;
   const allRepos = store.status?.repos ?? [];
-  const visibleRepos = hiddenRepoIds.length > 0 ? allRepos.filter(r => !hiddenRepoIds.includes(r.repoId)) : allRepos;
-  const repos = sortRepos(visibleRepos, repoSortMode, store.repoMetas);
-  const changedRepos = repos.filter(r => r.stagedFiles.length > 0 || r.unstagedFiles.length > 0);
+  const visibleRepos = useMemo(() => hiddenRepoIds.length > 0
+    ? allRepos.filter(r => !hiddenRepoIds.includes(r.repoId)) : allRepos, [allRepos, hiddenRepoIds]);
+  const repos = useMemo(() => sortRepos(visibleRepos, repoSortMode, store.repoMetas), [visibleRepos, repoSortMode, store.repoMetas]);
+  const changedRepos = useMemo(() => repos.filter(r => r.stagedFiles.length > 0 || r.unstagedFiles.length > 0), [repos]);
   const changesRepos = hideReposWithoutChanges ? changedRepos : repos;
   const metaMap = new Map(store.repoMetas.map(m => [m.id, m]));
   const multiRepo = repos.length >= 1;
@@ -1270,7 +1281,7 @@ function App() {
   // ── Commit action ─────────────────────────────────────────────────────────
 
   const doCommit = (andPush: boolean) => {
-    if (!store.commitMessage.trim()) return;
+    if (!useCommitStore.getState().commitMessage.trim()) return;
     // Read fresh state at commit time to avoid stale closure values
     const freshState = useCommitStore.getState();
     const currentRepos = freshState.status?.repos ?? [];
@@ -1486,7 +1497,7 @@ function App() {
         {activeTab === 'changes' && (<>
 
           {/* File list */}
-          <ScrollArea style={css.repoList} onKeyDown={(e) => handleTreeNavKeyDown(e, e.currentTarget)}>
+          <ScrollArea style={css.repoList} scrollRef={changesScrollRef} onKeyDown={(e) => handleTreeNavKeyDown(e, e.currentTarget)}>
             {hideReposWithoutChanges && changesRepos.length === 0 ? (
               <div style={css.filteredEmptyState}>
                 <Codicon name="filter" style={{ fontSize: '18px', opacity: 0.55 }} />
@@ -1554,6 +1565,7 @@ function App() {
                 onOpenAllChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid } satisfies CommitToHostMsg)}
                 onMultiSelect={handleMultiSelect}
                 multiSelectedFiles={multiSelectedFiles}
+                scrollRef={changesScrollRef}
               />
             ) : store.changesViewMode === 'changelists' ? (
               <ChangelistView
@@ -1606,6 +1618,7 @@ function App() {
                 ctxFile={ctxFile}
                 onMultiSelect={handleMultiSelect}
                 multiSelectedFiles={multiSelectedFiles}
+                scrollRef={changesScrollRef}
               />
             ) : (
               changesRepos.map((repoStatus, idx) => {
@@ -1696,6 +1709,7 @@ function App() {
                       ctxFile={ctxFile}
                       onMultiSelect={handleMultiSelect}
                       multiSelectedFiles={multiSelectedFiles}
+                      scrollRef={changesScrollRef}
                     />
                   </React.Fragment>
                 );
@@ -1735,7 +1749,6 @@ function App() {
 
           {/* Commit form */}
           <UnifiedCommitForm
-            message={store.commitMessage}
             repoStatuses={changesRepos}
             repoMetas={store.repoMetas}
             amendFlags={store.amendFlags}
@@ -1783,7 +1796,7 @@ function App() {
               send({ type: 'COMMIT_REBASE_ACTION', requestId: generateId(), repoId, action } satisfies CommitToHostMsg);
             }}
             onShelve={() => {
-              const name = store.commitMessage.trim();
+              const name = useCommitStore.getState().commitMessage.trim();
               if (!name) return;
               for (const repoStatus of changesRepos) {
                 const selectedPaths = store.getSelectedFilesForRepo(repoStatus.repoId);
@@ -1793,7 +1806,7 @@ function App() {
               store.setCommitMessage('');
             }}
             onStash={() => {
-              const message = store.commitMessage.trim() || 'WIP stash';
+              const message = useCommitStore.getState().commitMessage.trim() || 'WIP stash';
               for (const repoStatus of changesRepos) {
                 const selectedPaths = store.getSelectedFilesForRepo(repoStatus.repoId);
                 if (selectedPaths.length === 0) continue;

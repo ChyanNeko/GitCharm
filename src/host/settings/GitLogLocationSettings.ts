@@ -11,7 +11,7 @@ export type GitLogLayout = (typeof GIT_LOG_LAYOUTS)[number];
 export const DEFAULT_GIT_LOG_LOCATION: GitLogLocation = 'panel';
 export const DEFAULT_GIT_LOG_LAYOUT: GitLogLayout = 'logAndCommit';
 
-const CONFIG_SECTION = 'gitcharm';
+const CONFIG_SECTION = 'gitchyan';
 const LOCATION_KEY = 'gitLogDefaultLocation';
 const LAYOUT_KEY = 'gitLogDefaultLayout';
 
@@ -53,13 +53,13 @@ export function isGitLogDefaultUndocked(): boolean {
 }
 
 /**
- * Mirror the default location into the `gitcharm.gitLogDefaultUndocked` context
+ * Mirror the default location into the `gitchyan.gitLogDefaultUndocked` context
  * key, which package.json uses to hide the bottom-panel Git Log view when the
  * Log lives in an editor tab or its own window. Call this as early as possible
  * in activation, before VS Code evaluates the view's `when` clause.
  */
 export function syncGitLogLocationContext(): void {
-  void vscode.commands.executeCommand('setContext', 'gitcharm.gitLogDefaultUndocked', isGitLogDefaultUndocked());
+  void vscode.commands.executeCommand('setContext', 'gitchyan.gitLogDefaultUndocked', isGitLogDefaultUndocked());
 }
 
 /** Keep the context key in sync when the setting changes from the Settings UI. */

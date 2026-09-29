@@ -8,12 +8,12 @@ import {
   type ViewAndSortUserPrefs,
 } from '../types/settings';
 
-const GLOBAL_KEY = 'gitcharm.viewAndSort';
-const WORKSPACE_HIDDEN_REPOS_KEY = 'gitcharm.hiddenRepoIds';
+const GLOBAL_KEY = 'gitchyan.viewAndSort';
+const WORKSPACE_HIDDEN_REPOS_KEY = 'gitchyan.hiddenRepoIds';
 
 // Legacy (pre-refactor) keys — read once for migration, never written again.
 const LEGACY_FILE_VIEW_MODE_KEY = 'fileViewMode';
-const LEGACY_HIDE_REPOS_KEY = 'gitcharm.showOnlyChangedRepos';
+const LEGACY_HIDE_REPOS_KEY = 'gitchyan.showOnlyChangedRepos';
 
 function isRepoSortMode(value: unknown): value is RepoSortMode {
   return typeof value === 'string' && (REPO_SORT_MODES as readonly string[]).includes(value);

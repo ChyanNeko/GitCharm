@@ -30,6 +30,7 @@ export interface CommitState {
   error: string | null;
   changelists: ChangelistData[];
   changesViewMode: 'simplified' | 'changelists' | 'vscode';
+  statusViewMode?: 'simplified' | 'changelists' | 'vscode';
   defaultCommitAction: 'commit' | 'commitAndPush';
   defaultSaveAction: 'stash' | 'shelve';
   hasWorkspaceFolder: boolean;
@@ -75,9 +76,52 @@ function allFilePaths(repoStatus: RepoStatus): string[] {
   return Array.from(paths);
 }
 
+function sameFileList(a: RepoStatus['stagedFiles'], b: RepoStatus['stagedFiles']): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  for (let i = 0; i < a.length; i++) {
+    const x = a[i], y = b[i];
+    if (x.repoId !== y.repoId || x.path !== y.path || x.absolutePath !== y.absolutePath ||
+        x.oldPath !== y.oldPath || x.status !== y.status || x.staged !== y.staged || x.unstaged !== y.unstaged) return false;
+  }
+  return true;
+}
+
+/** Exact, linear comparison. Counts alone miss replacements and status changes; hashing still walks every file. */
+function sameWorkspaceStatus(a: WorkspaceStatus | null, b: WorkspaceStatus): boolean {
+  if (a === b) return true;
+  if (!a || a.repos.length !== b.repos.length) return false;
+  for (let i = 0; i < a.repos.length; i++) {
+    const x = a.repos[i], y = b.repos[i];
+    if (x.repoId !== y.repoId || x.isDetachedHead !== y.isDetachedHead ||
+        x.conflictCount !== y.conflictCount || x.mergeRebaseState !== y.mergeRebaseState ||
+        JSON.stringify(x.branch) !== JSON.stringify(y.branch) ||
+        !sameFileList(x.stagedFiles, y.stagedFiles) || !sameFileList(x.unstagedFiles, y.unstagedFiles)) return false;
+  }
+  return true;
+}
+
+function sameRepoMetas(a: RepoMeta[], b: RepoMeta[]): boolean {
+  return a === b || (a.length === b.length && a.every((meta, i) => JSON.stringify(meta) === JSON.stringify(b[i])));
+}
+
+function sameChangelists(a: ChangelistData[], b: ChangelistData[]): boolean {
+  if (a === b) return true;
+  if (a.length !== b.length) return false;
+  return a.every((x, i) => {
+    const y = b[i];
+    if (x.id !== y.id || x.name !== y.name || x.color !== y.color) return false;
+    const xRepos = Object.keys(x.fileAssignments), yRepos = Object.keys(y.fileAssignments);
+    return xRepos.length === yRepos.length && xRepos.every(repoId => {
+      const left = x.fileAssignments[repoId], right = y.fileAssignments[repoId];
+      return !!right && left.length === right.length && left.every((path, index) => path === right[index]);
+    });
+  });
+}
+
 function loadPersistedSelection(mode: 'simplified' | 'changelists', repoId: string): Set<string> | null {
   try {
-    const raw = localStorage.getItem(`gitcharm:${mode}:selection:${repoId}`);
+    const raw = localStorage.getItem(`gitchyan:${mode}:selection:${repoId}`);
     if (!raw) return null;
     return new Set(JSON.parse(raw) as string[]);
   } catch { return null; }
@@ -85,7 +129,7 @@ function loadPersistedSelection(mode: 'simplified' | 'changelists', repoId: stri
 
 function savePersistedSelection(mode: 'simplified' | 'changelists', repoId: string, paths: Set<string>) {
   try {
-    localStorage.setItem(`gitcharm:${mode}:selection:${repoId}`, JSON.stringify(Array.from(paths)));
+    localStorage.setItem(`gitchyan:${mode}:selection:${repoId}`, JSON.stringify(Array.from(paths)));
   } catch { /* ignore */ }
 }
 
@@ -111,6 +155,7 @@ export const useCommitStore = create<CommitState>((set, get) => ({
   error: null,
   changelists: [],
   changesViewMode: 'simplified',
+  statusViewMode: undefined,
   defaultCommitAction: 'commit',
   defaultSaveAction: 'stash',
   hasWorkspaceFolder: true,
@@ -118,25 +163,28 @@ export const useCommitStore = create<CommitState>((set, get) => ({
   activeProfile: undefined,
 
   setStatus: (repoMetas, status, iconTheme, defaultCommitAction, defaultSaveAction, hasWorkspaceFolder, aiEnabled, activeProfile) => {
+    const current = get();
+    if (current.statusViewMode === current.changesViewMode && sameWorkspaceStatus(current.status, status)) {
+      const changes: Partial<CommitState> = {};
+      if (!sameRepoMetas(current.repoMetas, repoMetas)) changes.repoMetas = repoMetas;
+      if (iconTheme !== undefined && iconTheme !== current.iconTheme) changes.iconTheme = iconTheme;
+      if (defaultCommitAction !== undefined && defaultCommitAction !== current.defaultCommitAction) changes.defaultCommitAction = defaultCommitAction;
+      if (defaultSaveAction !== undefined && defaultSaveAction !== current.defaultSaveAction) changes.defaultSaveAction = defaultSaveAction;
+      if (hasWorkspaceFolder !== undefined && hasWorkspaceFolder !== current.hasWorkspaceFolder) changes.hasWorkspaceFolder = hasWorkspaceFolder;
+      if (aiEnabled !== undefined && aiEnabled !== current.aiEnabled) changes.aiEnabled = aiEnabled;
+      if (activeProfile !== undefined && JSON.stringify(activeProfile) !== JSON.stringify(current.activeProfile)) changes.activeProfile = activeProfile;
+      if (Object.keys(changes).length > 0) set(changes);
+      return;
+    }
     const prev = get().repoSelections;
     const prevFiles = get().fileSelections;
     const prevSeen = get().seenFiles;
     const prevCollapsed = get().collapsedKeys;
-    const { changelists, changesViewMode } = get();
+    const { changesViewMode } = get();
     const repoSelections: Record<string, boolean> = {};
     const fileSelections: FileSelections = {};
     const seenFiles: Record<string, Set<string>> = {};
     const collapsedKeys = new Set(prevCollapsed);
-
-    // Build a lookup of which changelist each file belongs to (only in changelists mode)
-    const fileChangelistId = new Map<string, string>(); // `${repoId}::${path}` → changelistId
-    if (changesViewMode === 'changelists') {
-      for (const cl of changelists) {
-        for (const [repoId, paths] of Object.entries(cl.fileAssignments)) {
-          for (const p of paths) fileChangelistId.set(`${repoId}::${p}`, cl.id);
-        }
-      }
-    }
 
     for (const r of status.repos) {
       repoSelections[r.repoId] = prev[r.repoId] ?? true;
@@ -175,7 +223,7 @@ export const useCommitStore = create<CommitState>((set, get) => ({
         }
       }
     }
-    set({ repoMetas, status, repoSelections, fileSelections, seenFiles, collapsedKeys, ...(iconTheme !== undefined ? { iconTheme } : {}), ...(defaultCommitAction !== undefined ? { defaultCommitAction } : {}), ...(defaultSaveAction !== undefined ? { defaultSaveAction } : {}), ...(hasWorkspaceFolder !== undefined ? { hasWorkspaceFolder } : {}), ...(aiEnabled !== undefined ? { aiEnabled } : {}), ...(activeProfile !== undefined ? { activeProfile } : {}) });
+    set({ repoMetas, status, repoSelections, fileSelections, seenFiles, collapsedKeys, statusViewMode: changesViewMode, ...(iconTheme !== undefined ? { iconTheme } : {}), ...(defaultCommitAction !== undefined ? { defaultCommitAction } : {}), ...(defaultSaveAction !== undefined ? { defaultSaveAction } : {}), ...(hasWorkspaceFolder !== undefined ? { hasWorkspaceFolder } : {}), ...(aiEnabled !== undefined ? { aiEnabled } : {}), ...(activeProfile !== undefined ? { activeProfile } : {}) });
   },
 
   setRepoSelection: (repoId, selected) =>
@@ -249,6 +297,7 @@ export const useCommitStore = create<CommitState>((set, get) => ({
   setLoading: (v) => set({ loading: v }),
   setError: (err) => set({ error: err }),
   setChangelists: (changelists, viewMode) => {
+    if (get().changesViewMode === viewMode && sameChangelists(get().changelists, changelists)) return;
     set({ changelists, changesViewMode: viewMode });
   },
 

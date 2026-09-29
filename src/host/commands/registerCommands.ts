@@ -29,76 +29,76 @@ export function registerCommands(
 ): void {
   context.subscriptions.push(
     // Open the Git Log where the persisted default location says
-    vscode.commands.registerCommand('gitcharm.openLog', () => {
+    vscode.commands.registerCommand('gitchyan.openLog', () => {
       logPanel.openPreferred();
     }),
 
     // Pick and persist where the Git Log opens by default
-    vscode.commands.registerCommand('gitcharm.setGitLogDefaultLocation', () => {
+    vscode.commands.registerCommand('gitchyan.setGitLogDefaultLocation', () => {
       void logPanel.triggerDefaultLocationPick();
     }),
 
     // Show the GitCharm output channel (full error/event log)
-    vscode.commands.registerCommand('gitcharm.showOutputLog', () => {
+    vscode.commands.registerCommand('gitchyan.showOutputLog', () => {
       showLogChannel();
     }),
 
-    vscode.commands.registerCommand('gitcharm.refreshCommitPanel', async () => {
+    vscode.commands.registerCommand('gitchyan.refreshCommitPanel', async () => {
       if (!manager) return;
       await manager.reinitializeAndRefresh();
       logPanel.refresh();
     }),
 
-    vscode.commands.registerCommand('gitcharm.setFileViewFlat', () => {
+    vscode.commands.registerCommand('gitchyan.setFileViewFlat', () => {
       commitPanel.setFileViewMode('flat');
     }),
-    vscode.commands.registerCommand('gitcharm.setFileViewFlatChecked', () => {
+    vscode.commands.registerCommand('gitchyan.setFileViewFlatChecked', () => {
       commitPanel.setFileViewMode('flat');
     }),
 
-    vscode.commands.registerCommand('gitcharm.setFileViewTree', () => {
+    vscode.commands.registerCommand('gitchyan.setFileViewTree', () => {
       commitPanel.setFileViewMode('tree');
     }),
-    vscode.commands.registerCommand('gitcharm.setFileViewTreeChecked', () => {
+    vscode.commands.registerCommand('gitchyan.setFileViewTreeChecked', () => {
       commitPanel.setFileViewMode('tree');
     }),
 
-    vscode.commands.registerCommand('gitcharm.sortReposByDiscovery', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByDiscovery', () => {
       commitPanel.setRepoSortMode('discovery');
     }),
-    vscode.commands.registerCommand('gitcharm.sortReposByDiscoveryChecked', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByDiscoveryChecked', () => {
       commitPanel.setRepoSortMode('discovery');
     }),
 
-    vscode.commands.registerCommand('gitcharm.sortReposByName', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByName', () => {
       commitPanel.setRepoSortMode('name');
     }),
-    vscode.commands.registerCommand('gitcharm.sortReposByNameChecked', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByNameChecked', () => {
       commitPanel.setRepoSortMode('name');
     }),
 
-    vscode.commands.registerCommand('gitcharm.sortReposByPath', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByPath', () => {
       commitPanel.setRepoSortMode('path');
     }),
-    vscode.commands.registerCommand('gitcharm.sortReposByPathChecked', () => {
+    vscode.commands.registerCommand('gitchyan.sortReposByPathChecked', () => {
       commitPanel.setRepoSortMode('path');
     }),
 
-    vscode.commands.registerCommand('gitcharm.showReposWithoutChanges', () => {
+    vscode.commands.registerCommand('gitchyan.showReposWithoutChanges', () => {
       commitPanel.setHideReposWithoutChanges(false);
     }),
-    vscode.commands.registerCommand('gitcharm.showReposWithoutChangesChecked', () => {
+    vscode.commands.registerCommand('gitchyan.showReposWithoutChangesChecked', () => {
       commitPanel.setHideReposWithoutChanges(false);
     }),
 
-    vscode.commands.registerCommand('gitcharm.hideReposWithoutChanges', () => {
+    vscode.commands.registerCommand('gitchyan.hideReposWithoutChanges', () => {
       commitPanel.setHideReposWithoutChanges(true);
     }),
-    vscode.commands.registerCommand('gitcharm.hideReposWithoutChangesChecked', () => {
+    vscode.commands.registerCommand('gitchyan.hideReposWithoutChangesChecked', () => {
       commitPanel.setHideReposWithoutChanges(true);
     }),
 
-    vscode.commands.registerCommand('gitcharm.openMergeEditor', async (uri?: vscode.Uri) => {
+    vscode.commands.registerCommand('gitchyan.openMergeEditor', async (uri?: vscode.Uri) => {
       // Invoked from the editor context menu VS Code passes the file's URI; from the
       // Command Palette it passes nothing, so fall back to the active editor.
       const target = uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -117,15 +117,15 @@ export function registerCommands(
         .then(undefined, () => vscode.window.showTextDocument(target));
     }),
 
-    vscode.commands.registerCommand('gitcharm.commit', () => {
-      vscode.commands.executeCommand('gitcharm.commitPanel.focus');
+    vscode.commands.registerCommand('gitchyan.commit', () => {
+      vscode.commands.executeCommand('gitchyan.commitPanel.focus');
     }),
 
-    vscode.commands.registerCommand('gitcharm.pull', () => {
+    vscode.commands.registerCommand('gitchyan.pull', () => {
       return branchStatusBar.updateProject();
     }),
 
-    vscode.commands.registerCommand('gitcharm.push', async () => {
+    vscode.commands.registerCommand('gitchyan.push', async () => {
       if (!manager) return;
       const metas = manager.getRepoMetas();
       const metaById = new Map(metas.map(m => [m.id, m]));
@@ -157,13 +157,13 @@ export function registerCommands(
       commitPanel.refresh();
     }),
 
-    vscode.commands.registerCommand('gitcharm.fetchAll', async () => {
+    vscode.commands.registerCommand('gitchyan.fetchAll', async () => {
       if (!manager) return;
       await branchStatusBar.fetchAll();
       commitPanel.refresh();
     }),
 
-    vscode.commands.registerCommand('gitcharm.checkOrphanBranches', async () => {
+    vscode.commands.registerCommand('gitchyan.checkOrphanBranches', async () => {
       if (!manager) return;
       await vscode.window.withProgress(
         { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Checking for orphaned branches…'), cancellable: false },
@@ -181,7 +181,7 @@ export function registerCommands(
       );
     }),
 
-    vscode.commands.registerCommand('gitcharm.syncAll', async () => {
+    vscode.commands.registerCommand('gitchyan.syncAll', async () => {
       if (!manager) return;
       const metas = manager.getRepoMetas();
       const metaById = new Map(metas.map(m => [m.id, m]));
@@ -234,96 +234,96 @@ export function registerCommands(
       );
     }),
 
-    vscode.commands.registerCommand('gitcharm.showBranchMenu', (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.showBranchMenu', (repoId?: string) => {
       branchStatusBar.showMenu(repoId);
     }),
 
-    vscode.commands.registerCommand('gitcharm.showBranchOptions', (repoId: string, branchName: string) => {
+    vscode.commands.registerCommand('gitchyan.showBranchOptions', (repoId: string, branchName: string) => {
       branchStatusBar.showBranchOptions(repoId, branchName);
     }),
 
-    vscode.commands.registerCommand('gitcharm.updateProject', () => {
+    vscode.commands.registerCommand('gitchyan.updateProject', () => {
       branchStatusBar.updateProject();
     }),
 
-    vscode.commands.registerCommand('gitcharm.openSettings', () => {
-      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:rionoir.gitcharm');
+    vscode.commands.registerCommand('gitchyan.openSettings', () => {
+      vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Nekochyan.gitchyan');
     }),
 
-    vscode.commands.registerCommand('gitcharm.resetViewLocations', async () => {
+    vscode.commands.registerCommand('gitchyan.resetViewLocations', async () => {
       await vscode.commands.executeCommand('workbench.action.resetViewLocations');
       commitPanel.refresh();
     }),
 
-    vscode.commands.registerCommand('gitcharm.openGitAnnotations', async () => {
+    vscode.commands.registerCommand('gitchyan.openGitAnnotations', async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) await annotationController.openAnnotations(editor);
     }),
 
-    vscode.commands.registerCommand('gitcharm.closeGitAnnotations', () => {
+    vscode.commands.registerCommand('gitchyan.closeGitAnnotations', () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) annotationController.closeAnnotations(editor);
     }),
 
-    vscode.commands.registerCommand('gitcharm.toggleGitAnnotations', async () => {
+    vscode.commands.registerCommand('gitchyan.toggleGitAnnotations', async () => {
       const editor = vscode.window.activeTextEditor;
       if (editor) await annotationController.toggleAnnotations(editor);
     }),
 
-    vscode.commands.registerCommand('gitcharm.navigateToAnnotationCommit', (hash: string, repoId: string) => {
+    vscode.commands.registerCommand('gitchyan.navigateToAnnotationCommit', (hash: string, repoId: string) => {
       annotationController.navigateToCommit(hash, repoId);
     }),
 
-    vscode.commands.registerCommand('gitcharm.manageHiddenRepos', () => {
+    vscode.commands.registerCommand('gitchyan.manageHiddenRepos', () => {
       commitPanel.manageHiddenRepos();
     }),
 
-    vscode.commands.registerCommand('gitcharm.manageProfiles', () => {
+    vscode.commands.registerCommand('gitchyan.manageProfiles', () => {
       profileStatusBar.showMenu();
     }),
 
-    vscode.commands.registerCommand('gitcharm.switchProfile', () => {
+    vscode.commands.registerCommand('gitchyan.switchProfile', () => {
       profileStatusBar.switchProfile();
     }),
 
     // ── Submodule commands ────────────────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.submodule.init', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.init', async (repoId?: string) => {
       const sub = await pickSubmodule(manager, repoId, false);
       if (!sub) return;
       const reqId = Math.random().toString(36).slice(2);
       commitPanel.handleSubmoduleCommand({ type: 'SUBMODULE_INIT', requestId: reqId, parentRepoId: sub.parentRepoId, submodulePath: sub.submodulePath });
     }),
 
-    vscode.commands.registerCommand('gitcharm.submodule.update', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.update', async (repoId?: string) => {
       const sub = await pickSubmodule(manager, repoId, true);
       if (!sub) return;
       const reqId = Math.random().toString(36).slice(2);
       commitPanel.handleSubmoduleCommand({ type: 'SUBMODULE_UPDATE', requestId: reqId, parentRepoId: sub.parentRepoId, submodulePath: sub.submodulePath, recursive: false });
     }),
 
-    vscode.commands.registerCommand('gitcharm.submodule.updateRecursive', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.updateRecursive', async (repoId?: string) => {
       const sub = await pickSubmodule(manager, repoId, true);
       if (!sub) return;
       const reqId = Math.random().toString(36).slice(2);
       commitPanel.handleSubmoduleCommand({ type: 'SUBMODULE_UPDATE', requestId: reqId, parentRepoId: sub.parentRepoId, submodulePath: sub.submodulePath, recursive: true });
     }),
 
-    vscode.commands.registerCommand('gitcharm.submodule.deinit', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.deinit', async (repoId?: string) => {
       const sub = await pickSubmodule(manager, repoId, true);
       if (!sub) return;
       const reqId = Math.random().toString(36).slice(2);
       commitPanel.handleSubmoduleCommand({ type: 'SUBMODULE_DEINIT', requestId: reqId, parentRepoId: sub.parentRepoId, submodulePath: sub.submodulePath, force: false });
     }),
 
-    vscode.commands.registerCommand('gitcharm.submodule.deinitForce', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.deinitForce', async (repoId?: string) => {
       const sub = await pickSubmodule(manager, repoId, true);
       if (!sub) return;
       const reqId = Math.random().toString(36).slice(2);
       commitPanel.handleSubmoduleCommand({ type: 'SUBMODULE_DEINIT', requestId: reqId, parentRepoId: sub.parentRepoId, submodulePath: sub.submodulePath, force: true });
     }),
 
-    vscode.commands.registerCommand('gitcharm.submodule.openInNewWindow', async (repoId?: string) => {
+    vscode.commands.registerCommand('gitchyan.submodule.openInNewWindow', async (repoId?: string) => {
       const metas = manager?.getRepoMetas().filter(m => m.isSubmodule) ?? [];
       let target = repoId ? metas.find(m => m.id === repoId) : undefined;
       if (!target && metas.length === 1) target = metas[0];
@@ -342,7 +342,7 @@ export function registerCommands(
 
     // ── AI prompts ────────────────────────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.customizeAiPrompts', async () => {
+    vscode.commands.registerCommand('gitchyan.customizeAiPrompts', async () => {
       const { AI_PROMPT_IDS, DEFAULT_PROMPTS, getCustomPrompt, promptSettingKey } = await import('../ai/prompts');
       const labels: Record<(typeof AI_PROMPT_IDS)[number], { label: string; icon: string }> = {
         commitMessage: { label: vscode.l10n.t('Commit message'), icon: 'git-commit' },
@@ -351,7 +351,7 @@ export function registerCommands(
         explainCommit: { label: vscode.l10n.t('Explain commit'), icon: 'sparkle' },
         explainPullRequest: { label: vscode.l10n.t('Explain pull request'), icon: 'sparkle' },
       };
-      const config = vscode.workspace.getConfiguration('gitcharm');
+      const config = vscode.workspace.getConfiguration('gitchyan');
       const picked = await vscode.window.showQuickPick(
         AI_PROMPT_IDS.map(id => ({
           id,
@@ -383,13 +383,13 @@ export function registerCommands(
         // Start from the built-in text rather than an empty box — editing a prompt is far easier than writing one.
         await config.update(key, DEFAULT_PROMPTS[picked.id], vscode.ConfigurationTarget.Global);
       }
-      await vscode.commands.executeCommand('workbench.action.openSettings', `gitcharm.${key}`);
+      await vscode.commands.executeCommand('workbench.action.openSettings', `gitchyan.${key}`);
     }),
 
     // ── AI provider / model selection ─────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.selectAiModel', async () => {
-      const config = vscode.workspace.getConfiguration('gitcharm');
+    vscode.commands.registerCommand('gitchyan.selectAiModel', async () => {
+      const config = vscode.workspace.getConfiguration('gitchyan');
       const currentProvider: string = config.get('ai.provider', 'vscode-lm');
 
       type ProviderItem = vscode.QuickPickItem & { providerId: string };
@@ -417,7 +417,7 @@ export function registerCommands(
       if (!pickedProvider) return;
 
       if (pickedProvider.providerId === OPEN_SETTINGS_ID) {
-        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:rionoir.gitcharm gitcharm.ai');
+        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Nekochyan.gitchyan gitchyan.ai');
         return;
       }
 
@@ -701,7 +701,7 @@ export function registerCommands(
     }),
 
     // ── Worktree commands ─────────────────────────────────────────────────────
-    vscode.commands.registerCommand('gitcharm.worktree.add', async () => {
+    vscode.commands.registerCommand('gitchyan.worktree.add', async () => {
       if (!commitPanel) return;
       // Determine which repo to use
       const metas = manager?.getRepoMetas().filter(m => (m.depth ?? 0) === 0) ?? [];
@@ -720,7 +720,7 @@ export function registerCommands(
       commitPanel.handleSubmoduleCommand({ type: 'WORKTREE_CREATE_PROMPT', repoId });
     }),
 
-    vscode.commands.registerCommand('gitcharm.worktree.prune', async () => {
+    vscode.commands.registerCommand('gitchyan.worktree.prune', async () => {
       if (!commitPanel) return;
       const metas = manager?.getRepoMetas().filter(m => (m.depth ?? 0) === 0) ?? [];
       let repoId: string | undefined;
@@ -740,11 +740,11 @@ export function registerCommands(
 
     // ── Pull Request commands ─────────────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.pullRequests.refresh', async () => {
+    vscode.commands.registerCommand('gitchyan.pullRequests.refresh', async () => {
       await commitPanel.requestPullRequestRefresh();
     }),
 
-    vscode.commands.registerCommand('gitcharm.pullRequests.manageCredentials', async () => {
+    vscode.commands.registerCommand('gitchyan.pullRequests.manageCredentials', async () => {
       if (!pullRequestManager || !manager) return;
 
       const ADD_NEW = Symbol('add-new');
@@ -860,7 +860,7 @@ export function registerCommands(
 
     // ── File History ──────────────────────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.showFileHistory', async (uri?: vscode.Uri) => {
+    vscode.commands.registerCommand('gitchyan.showFileHistory', async (uri?: vscode.Uri) => {
       if (!manager || !extensionUri) return;
       // uri comes from explorer/context or editor/context; fall back to active editor
       const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -873,7 +873,7 @@ export function registerCommands(
 
     // ── Compare With ────────────────────────────────────────────────────────────
 
-    vscode.commands.registerCommand('gitcharm.compareWith', async (uri?: vscode.Uri) => {
+    vscode.commands.registerCommand('gitchyan.compareWith', async (uri?: vscode.Uri) => {
       if (!manager) return;
       // uri comes from explorer/context or editor/context; fall back to active editor
       const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
@@ -910,10 +910,10 @@ export function registerCommands(
       if (!conflictedFiles.has(doc.uri.fsPath)) return;
       if (!doc.getText().includes('<<<<<<<')) {
         conflictedFiles.delete(doc.uri.fsPath);
-        if (!vscode.workspace.getConfiguration('gitcharm').get<boolean>('openCommitPanelOnConflictResolved', true)) return;
+        if (!vscode.workspace.getConfiguration('gitchyan').get<boolean>('openCommitPanelOnConflictResolved', true)) return;
         // Delay to run after VS Code's built-in SCM view focus
         setTimeout(() => {
-          vscode.commands.executeCommand('gitcharm.commitPanel.focus');
+          vscode.commands.executeCommand('gitchyan.commitPanel.focus');
         }, 300);
       }
     }),

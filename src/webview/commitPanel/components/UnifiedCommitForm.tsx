@@ -6,9 +6,9 @@ import { computeSyncState, hasWorkingChanges, type SyncAction } from '../syncSta
 import * as l10n from '@vscode/l10n';
 import { plural } from '../../shared/l10n';
 import { isImeComposing } from '../../shared/ime';
+import { useCommitStore } from '../store/commitStore';
 
 interface Props {
-  message: string;
   repoStatuses: RepoStatus[];
   /**
    * Every repo visible in the panel, including ones with no changes — the commit tab can
@@ -210,12 +210,13 @@ function syncDropdownItems(
 }
 
 export function UnifiedCommitForm({
-  message, repoStatuses, syncRepoStatuses, repoMetas, amendFlags,
+  repoStatuses, syncRepoStatuses, repoMetas, amendFlags,
   loading, changesViewMode, defaultCommitAction = 'commit', defaultSaveAction = 'stash', vscodeSelectedRepos, getSelectedFilesForRepo, onDeselectRepo, onMessageChange, onAmendToggle, onCommit, onCommitAndPush, onShelve, onStash,
   onSyncAction, onPullRepos, onPushRepos, onForcePushRepos,
   aiEnabled, onAutopilot, onAutopilotContextMenu, generatingMessage,
   activeProfile, onOpenProfiles, onRebaseAction,
 }: Props) {
+  const message = useCommitStore(s => s.commitMessage);
   const metaMap = new Map(repoMetas.map(m => [m.id, m]));
   const [textareaFocused, setTextareaFocused] = useState(false);
 

@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { FileStatus, RepoStatus } from '../../shared/types';
 import type { ViewMode } from '../store/commitStore';
 import type { IconThemeData } from '../../../host/types/messages';
@@ -45,6 +45,7 @@ interface Props {
   ctxFile?: { repoId: string; path: string } | null;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function ProjectGroup({
@@ -54,7 +55,7 @@ export function ProjectGroup({
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge,
   onBranchClick, onRepoContextMenu, onOpenAllChanges, iconTheme, activeFolderPath, ctxFile,
-  onMultiSelect, multiSelectedFiles,
+  onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const repoId = repoStatus.repoId;
   const collapsed = isCollapsed(repoId);
@@ -62,16 +63,21 @@ export function ProjectGroup({
     ? tagColor()
     : branchColor(repoStatus.branch.name, false);
 
-  const fileMap = new Map<string, FileStatus>();
-  for (const f of repoStatus.unstagedFiles) fileMap.set(f.path, f);
-  for (const f of repoStatus.stagedFiles) fileMap.set(f.path, f);
-  const allFiles = Array.from(fileMap.values());
+  const allFiles = useMemo(() => {
+    const fileMap = new Map<string, FileStatus>();
+    for (const f of repoStatus.unstagedFiles) fileMap.set(f.path, f);
+    for (const f of repoStatus.stagedFiles) fileMap.set(f.path, f);
+    return Array.from(fileMap.values());
+  }, [repoStatus.unstagedFiles, repoStatus.stagedFiles]);
 
-  const dirKeys: string[] = [];
-  for (const f of allFiles) {
-    const parts = f.path.split('/');
-    for (let i = 1; i < parts.length; i++) dirKeys.push(`${repoId}:${parts.slice(0, i).join('/')}`);
-  }
+  const dirKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const f of allFiles) {
+      const parts = f.path.split('/');
+      for (let i = 1; i < parts.length; i++) keys.add(`${repoId}:${parts.slice(0, i).join('/')}`);
+    }
+    return Array.from(keys);
+  }, [allFiles, repoId]);
   const expanded = viewMode === 'tree' && hasExpandedDirs(dirKeys);
 
   const totalFiles = allFiles.length;
@@ -177,6 +183,7 @@ export function ProjectGroup({
               ctxFile={ctxFile}
               onMultiSelect={onMultiSelect}
               multiSelectedFiles={multiSelectedFiles}
+              scrollRef={scrollRef}
             />
           ) : (
             <div style={styles.noChanges}>{l10n.t('No changes')}</div>

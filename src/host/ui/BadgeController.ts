@@ -20,7 +20,7 @@ export class BadgeController implements vscode.Disposable {
       getTreeItem: () => { throw new Error('unreachable'); },
       getChildren: () => [],
     };
-    this.treeView = vscode.window.createTreeView('gitcharm.commitBadge', {
+    this.treeView = vscode.window.createTreeView('gitchyan.commitBadge', {
       treeDataProvider: emptyProvider,
     });
   }

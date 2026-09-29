@@ -2,12 +2,12 @@ import * as vscode from 'vscode';
 
 /**
  * Virtual document provider for pull request file diffs.
- * URI scheme: gitcharm-pr
+ * URI scheme: gitchyan-pr
  * Content is the raw file content fetched from the forge API at a specific ref (base or head),
  * since a PR's branches generally aren't checked out locally.
  */
 export class PullRequestDocumentProvider implements vscode.TextDocumentContentProvider {
-  static readonly scheme = 'gitcharm-pr';
+  static readonly scheme = 'gitchyan-pr';
 
   private readonly _onDidChange = new vscode.EventEmitter<vscode.Uri>();
   readonly onDidChange = this._onDidChange.event;

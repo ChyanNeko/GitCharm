@@ -3,7 +3,7 @@
   "submenu.commitPanel.fileView.label": "檔案檢視",
   "submenu.commitPanel.sortRepos.label": "儲存庫排序方式",
   "submenu.commitPanel.reposWithoutChanges.label": "儲存庫檢視",
-  "viewsContainer.gitcharm-log.title": "GitCharm 記錄",
+  "viewsContainer.gitcharm-log.title": "gitchyan 記錄",
   "view.gitLog.name": "Git 記錄",
   "command.openLog.title": "聚焦至 Git 記錄",
   "command.showOutputLog.title": "顯示輸出記錄",

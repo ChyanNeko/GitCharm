@@ -107,9 +107,9 @@ export class WorkspaceGitManager implements vscode.Disposable {
       // Repository discovery settings affect the repo set, watcher patterns, and colors.
       vscode.workspace.onDidChangeConfiguration((e) => {
         if (
-          e.affectsConfiguration('gitcharm.repositoryScanMaxDepth') ||
-          e.affectsConfiguration('gitcharm.repositoryScanIgnoredFolders') ||
-          e.affectsConfiguration('gitcharm.projectColors')
+          e.affectsConfiguration('gitchyan.repositoryScanMaxDepth') ||
+          e.affectsConfiguration('gitchyan.repositoryScanIgnoredFolders') ||
+          e.affectsConfiguration('gitchyan.projectColors')
         ) {
           this.reinitialize();
           this.setupGitInitWatchers();
@@ -180,7 +180,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
   }
 
   private fetchOnStartupIfEnabled(onDone: () => void): void {
-    const enabled = vscode.workspace.getConfiguration('gitcharm').get<boolean>('fetchOnStartup', true);
+    const enabled = vscode.workspace.getConfiguration('gitchyan').get<boolean>('fetchOnStartup', true);
     if (enabled) {
       this.fetchAll().catch(console.error).finally(onDone);
     } else {
@@ -198,7 +198,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
     this.initialStatusDone = false;
 
     const folders = vscode.workspace.workspaceFolders ?? [];
-    const customColors = vscode.workspace.getConfiguration('gitcharm').get<Record<string, string>>('projectColors', {});
+    const customColors = vscode.workspace.getConfiguration('gitchyan').get<Record<string, string>>('projectColors', {});
 
     // Shared counter so every repo (workspace folder, scanned repo, or submodule)
     // gets its own palette slot — submodules are visually distinct, just like multi-repo.
@@ -284,7 +284,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
 
   private getRepositoryScanMaxDepth(): number {
     const value = vscode.workspace
-      .getConfiguration('gitcharm')
+      .getConfiguration('gitchyan')
       .get<number>('repositoryScanMaxDepth', DEFAULT_REPOSITORY_SCAN_MAX_DEPTH);
 
     if (typeof value !== 'number' || !Number.isFinite(value)) {
@@ -295,7 +295,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
 
   private getRepositoryScanIgnoredFolders(): string[] {
     const value = vscode.workspace
-      .getConfiguration('gitcharm')
+      .getConfiguration('gitchyan')
       .get<string[]>('repositoryScanIgnoredFolders', DEFAULT_REPOSITORY_SCAN_IGNORED_FOLDERS);
 
     return Array.isArray(value)
@@ -690,7 +690,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
     this.initialStatusDone = true;
 
     if (newlyUntracked.length > 0) {
-      const cfg = vscode.workspace.getConfiguration('gitcharm');
+      const cfg = vscode.workspace.getConfiguration('gitchyan');
       const enabled = cfg.get<boolean>('promptAddUntrackedToGit', true);
       const viewMode = cfg.get<string>('changesViewMode', 'simplified');
       if (enabled && viewMode !== 'simplified') {

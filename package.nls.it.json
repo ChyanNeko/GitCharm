@@ -3,7 +3,7 @@
   "submenu.commitPanel.fileView.label": "Visualizzazione file",
   "submenu.commitPanel.sortRepos.label": "Ordina repository per",
   "submenu.commitPanel.reposWithoutChanges.label": "Visualizzazione repository",
-  "viewsContainer.gitcharm-log.title": "GitCharm Log",
+  "viewsContainer.gitcharm-log.title": "gitchyan Log",
   "view.gitLog.name": "Git Log",
   "command.openLog.title": "Mostra Git Log",
   "command.showOutputLog.title": "Mostra log di output",

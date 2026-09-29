@@ -5,8 +5,8 @@ import { GitLogPanelProvider } from '../panels/GitLogPanelProvider';
 import { displayWidth } from '../utils/displayWidth';
 
 const GHOST_MAX_SUMMARY_LEN = 72;
-const CONTEXT_KEY = 'gitcharm.annotationsVisible';
-const CONFIG_SECTION = 'gitcharm';
+const CONTEXT_KEY = 'gitchyan.annotationsVisible';
+const CONFIG_SECTION = 'gitchyan';
 const GIT_ANNOTATIONS_ENABLED = 'gitAnnotations.enabled';
 const GIT_GHOST_TEXT_ENABLED = 'gitGhostText.enabled';
 
@@ -573,7 +573,7 @@ export class FileAnnotationController implements vscode.Disposable {
 
   private buildHoverMessage(line: BlameLine, repoId: string): vscode.MarkdownString {
     const args = encodeURIComponent(JSON.stringify([line.hash, repoId]));
-    const commandUri = `command:gitcharm.navigateToAnnotationCommit?${args}`;
+    const commandUri = `command:gitchyan.navigateToAnnotationCommit?${args}`;
 
     const md = new vscode.MarkdownString(
       `$(git-commit) \`${line.hash.slice(0, 8)}\`\n\n` +

@@ -34,8 +34,8 @@ import type { PullRequestDetailPanel } from './PullRequestDetailPanel';
 
 type DivergedStrategy = 'merge' | 'rebase' | 'force';
 
-const COMMIT_MESSAGE_WORKSPACE_KEY = 'gitcharm.commitPanel.draftMessage';
-const COMMIT_SEEDED_WORKSPACE_KEY = 'gitcharm.commitPanel.seededMessage';
+const COMMIT_MESSAGE_WORKSPACE_KEY = 'gitchyan.commitPanel.draftMessage';
+const COMMIT_SEEDED_WORKSPACE_KEY = 'gitchyan.commitPanel.seededMessage';
 
 /**
  * Asks — in the command bar — how to reconcile branches that have diverged from their
@@ -72,7 +72,7 @@ async function promptDivergedStrategy(repoNames: string[], rewritten: boolean): 
 }
 
 export class CommitPanelProvider implements vscode.WebviewViewProvider {
-  public static readonly viewType = 'gitcharm.commitPanel';
+  public static readonly viewType = 'gitchyan.commitPanel';
   private readonly viewAndSortSettings: ViewAndSortSettingsService;
   private view?: vscode.WebviewView;
   private logProvider?: GitLogPanelProvider;
@@ -274,7 +274,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       webviewView.webview,
       this.extensionUri,
       'commitPanel',
-      'GitCharm'
+      'gitchyan'
     );
 
     webviewView.webview.onDidReceiveMessage((msg: CommitToHostMsg) =>
@@ -326,12 +326,12 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
           }).catch(() => { /* icon theme optional */ });
         }
       }
-      if (e.affectsConfiguration('gitcharm.ai.enabled')) {
+      if (e.affectsConfiguration('gitchyan.ai.enabled')) {
         this.manager.getAllStatuses().then(status => {
           this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
         });
       }
-      if (e.affectsConfiguration('gitcharm.changesViewMode') || e.affectsConfiguration('gitcharm.defaultCommitAction') || e.affectsConfiguration('gitcharm.defaultSaveAction')) {
+      if (e.affectsConfiguration('gitchyan.changesViewMode') || e.affectsConfiguration('gitchyan.defaultCommitAction') || e.affectsConfiguration('gitchyan.defaultSaveAction')) {
         this.changelistService?.setChangelistMode(this.getChangesViewMode() === 'changelists');
         this.manager.getAllStatuses().then(status => {
           this.postChangelistsUpdate(status);
@@ -578,7 +578,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private getChangesViewMode(): 'simplified' | 'changelists' | 'vscode' {
-    return vscode.workspace.getConfiguration('gitcharm').get<'simplified' | 'changelists' | 'vscode'>('changesViewMode', 'simplified');
+    return vscode.workspace.getConfiguration('gitchyan').get<'simplified' | 'changelists' | 'vscode'>('changesViewMode', 'simplified');
   }
 
   private postViewAndSortSettings(): void {
@@ -588,9 +588,9 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private syncContextKeys(settings: ViewAndSortSettings): void {
-    vscode.commands.executeCommand('setContext', 'gitcharm.fileViewMode', settings.fileViewMode);
-    vscode.commands.executeCommand('setContext', 'gitcharm.repoSortMode', settings.repoSortMode);
-    vscode.commands.executeCommand('setContext', 'gitcharm.hideReposWithoutChanges', settings.hideReposWithoutChanges);
+    vscode.commands.executeCommand('setContext', 'gitchyan.fileViewMode', settings.fileViewMode);
+    vscode.commands.executeCommand('setContext', 'gitchyan.repoSortMode', settings.repoSortMode);
+    vscode.commands.executeCommand('setContext', 'gitchyan.hideReposWithoutChanges', settings.hideReposWithoutChanges);
   }
 
   setFileViewMode(mode: 'flat' | 'tree'): void {
@@ -606,15 +606,15 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   }
 
   private getDefaultCommitAction(): 'commit' | 'commitAndPush' {
-    return vscode.workspace.getConfiguration('gitcharm').get<'commit' | 'commitAndPush'>('defaultCommitAction', 'commit');
+    return vscode.workspace.getConfiguration('gitchyan').get<'commit' | 'commitAndPush'>('defaultCommitAction', 'commit');
   }
 
   private getDefaultSaveAction(): 'stash' | 'shelve' {
-    return vscode.workspace.getConfiguration('gitcharm').get<'stash' | 'shelve'>('defaultSaveAction', 'stash');
+    return vscode.workspace.getConfiguration('gitchyan').get<'stash' | 'shelve'>('defaultSaveAction', 'stash');
   }
 
   private getAiEnabled(): boolean {
-    return vscode.workspace.getConfiguration('gitcharm').get<boolean>('ai.enabled', true);
+    return vscode.workspace.getConfiguration('gitchyan').get<boolean>('ai.enabled', true);
   }
 
   getHiddenRepoIds(): string[] {
@@ -667,10 +667,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     if (this.changelistService) return this.changelistService;
     const folderPath = vscode.workspace.workspaceFolders?.[0]?.uri.fsPath;
     if (!folderPath) return undefined;
-    const workspaceFilePath = vscode.workspace.workspaceFile?.scheme === 'file'
-      ? vscode.workspace.workspaceFile.fsPath
-      : undefined;
-    this.changelistService = new ChangelistService(folderPath, this.globalStoragePath, workspaceFilePath, this.getChangesViewMode() === 'changelists');
+    this.changelistService = new ChangelistService(folderPath, this.globalStoragePath, this.getChangesViewMode() === 'changelists');
     return this.changelistService;
   }
 
@@ -987,7 +984,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'OPEN_PROFILES_MENU': {
-        vscode.commands.executeCommand('gitcharm.manageProfiles');
+        vscode.commands.executeCommand('gitchyan.manageProfiles');
         break;
       }
 
@@ -1301,7 +1298,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) return;
         const absUri = vscode.Uri.file(path.join(repo.rootPath, msg.filePath));
-        await vscode.commands.executeCommand('gitcharm.showFileHistory', absUri);
+        await vscode.commands.executeCommand('gitchyan.showFileHistory', absUri);
         break;
       }
 
@@ -1457,7 +1454,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_SHOW_BRANCH_MENU': {
-        await vscode.commands.executeCommand('gitcharm.showBranchMenu', msg.repoId);
+        await vscode.commands.executeCommand('gitchyan.showBranchMenu', msg.repoId);
         break;
       }
 
@@ -1471,19 +1468,19 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_SELECT_AI_MODEL': {
-        await vscode.commands.executeCommand('gitcharm.selectAiModel');
+        await vscode.commands.executeCommand('gitchyan.selectAiModel');
         break;
       }
 
       case 'COMMIT_OPEN_AI_SETTINGS': {
-        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:rionoir.gitcharm gitcharm.ai');
+        await vscode.commands.executeCommand('workbench.action.openSettings', '@ext:Nekochyan.gitchyan gitchyan.ai');
         break;
       }
 
       case 'COMMIT_GENERATE_MESSAGE': {
         try {
           const ws = await this.manager.getAllStatuses();
-          const cfg = vscode.workspace.getConfiguration('gitcharm');
+          const cfg = vscode.workspace.getConfiguration('gitchyan');
           const maxDiffChars: number = cfg.get('ai.maxDiffChars', 8000);
           const multiRepo = ws.repos.length > 1;
 
@@ -2278,7 +2275,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_MANAGE_REPO': {
-        await vscode.commands.executeCommand('gitcharm.showBranchMenu', msg.repoId);
+        await vscode.commands.executeCommand('gitchyan.showBranchMenu', msg.repoId);
         break;
       }
 
@@ -2763,7 +2760,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'PULLREQUEST_SET_HOST_PROVIDER_OVERRIDE': {
-        const config = vscode.workspace.getConfiguration('gitcharm');
+        const config = vscode.workspace.getConfiguration('gitchyan');
         const overrides = config.get<Record<string, string>>('pullRequests.hostProviderOverrides', {});
         await config.update('pullRequests.hostProviderOverrides', { ...overrides, [msg.host]: msg.provider }, vscode.ConfigurationTarget.Global);
         if (this.pullRequestManager) {

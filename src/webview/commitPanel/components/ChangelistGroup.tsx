@@ -1,4 +1,4 @@
-import React, { useEffect, useRef, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import type { ChangelistData, FileStatus, RepoStatus } from '../../shared/types';
 import { CHANGELIST_DEFAULT_ID, CHANGELIST_UNVERSIONED_ID } from '../../shared/types';
 import type { ViewMode } from '../store/commitStore';
@@ -54,6 +54,7 @@ interface Props {
   ctxFile?: { repoId: string; path: string } | null;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 export function ChangelistGroup({
@@ -62,7 +63,7 @@ export function ChangelistGroup({
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
   onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, ctxFile,
-  onMultiSelect, multiSelectedFiles,
+  onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const collapseKey = `cl:${changelist.id}`;
   const collapsed = isCollapsed(collapseKey);
@@ -164,6 +165,7 @@ export function ChangelistGroup({
                 ctxFile={ctxFile}
                 onMultiSelect={onMultiSelect}
                 multiSelectedFiles={multiSelectedFiles}
+                scrollRef={scrollRef}
               />
             ))}
         </div>
@@ -214,6 +216,7 @@ interface RepoSubGroupProps {
   defaultCollapsed?: boolean;
   onMultiSelect?: (file: FileStatus) => void;
   multiSelectedFiles?: FileStatus[];
+  scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
 function RepoSubGroup({
@@ -222,16 +225,19 @@ function RepoSubGroup({
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
   onOpenFile, onRollback, onResolveMerge, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, changelistId, ctxFile, isFirst = false, isLast = false, defaultCollapsed = false,
-  onMultiSelect, multiSelectedFiles,
+  onMultiSelect, multiSelectedFiles, scrollRef,
 }: RepoSubGroupProps) {
   const collapseKey = `cl-repo:${changelistId ?? ''}:${repoId}`;
   // When defaultCollapsed, the key's presence means "user explicitly opened it"
   const collapsed = defaultCollapsed ? !isCollapsed(collapseKey) : isCollapsed(collapseKey);
-  const dirKeys: string[] = [];
-  for (const f of files) {
-    const parts = f.path.split('/');
-    for (let i = 1; i < parts.length; i++) dirKeys.push(`${repoId}:${parts.slice(0, i).join('/')}`);
-  }
+  const dirKeys = useMemo(() => {
+    const keys = new Set<string>();
+    for (const f of files) {
+      const parts = f.path.split('/');
+      for (let i = 1; i < parts.length; i++) keys.add(`${repoId}:${parts.slice(0, i).join('/')}`);
+    }
+    return Array.from(keys);
+  }, [files, repoId]);
   const expanded = viewMode === 'tree' && hasExpandedDirs(dirKeys);
   const totalFiles = files.length;
   const selectedCount = files.filter(f => isFileSelected(repoId, f.path)).length;
@@ -347,6 +353,7 @@ function RepoSubGroup({
               ctxFile={ctxFile}
               onMultiSelect={onMultiSelect}
               multiSelectedFiles={multiSelectedFiles}
+              scrollRef={scrollRef}
             />
           )}
         </div>

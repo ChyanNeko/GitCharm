@@ -4,7 +4,7 @@ let channel: vscode.LogOutputChannel | undefined;
 
 /** Creates the shared output channel. Call once from activate(). */
 export function initLogger(context: vscode.ExtensionContext): vscode.LogOutputChannel {
-  channel = vscode.window.createOutputChannel('GitCharm', { log: true });
+  channel = vscode.window.createOutputChannel('gitchyan', { log: true });
   context.subscriptions.push(channel);
   return channel;
 }

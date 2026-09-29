@@ -47,7 +47,7 @@ export async function openCommitFullDetailPanel(
   }
 
   const panel = vscode.window.createWebviewPanel(
-    'gitcharm.commitFullDetail',
+    'gitchyan.commitFullDetail',
     vscode.l10n.t('Commit {0}', hash.slice(0, 7)),
     vscode.ViewColumn.One,
     {
@@ -59,7 +59,7 @@ export async function openCommitFullDetailPanel(
   await setupPanel(panel, extensionUri, manager, repoId, hash, opts, profileService);
 }
 
-/** Re-hydrates a Commit Full Detail panel restored by VS Code after a window reload/restart — see registerWebviewPanelSerializer('gitcharm.commitFullDetail', ...) in extension.ts. */
+/** Re-hydrates a Commit Full Detail panel restored by VS Code after a window reload/restart — see registerWebviewPanelSerializer('gitchyan.commitFullDetail', ...) in extension.ts. */
 export async function deserializeCommitFullDetailPanel(
   panel: vscode.WebviewPanel,
   state: unknown,
@@ -176,7 +176,7 @@ async function setupPanel(
   panel.onDidDispose(() => iconThemeWatcher.dispose());
 
   const iconTheme = await loadIconTheme(panel.webview).catch(() => ({ type: 'none' as const }));
-  const cfg = vscode.workspace.getConfiguration('gitcharm');
+  const cfg = vscode.workspace.getConfiguration('gitchyan');
 
   // Only needed for a stash — its author section shows "you" (the active profile),
   // matching how it's committed, not a fixed author baked into the entry.
@@ -224,7 +224,7 @@ async function explainCommit(
   onProgress: (explanationSoFar: string) => void,
 ): Promise<{ explanation?: string; error?: string }> {
   try {
-    const cfg = vscode.workspace.getConfiguration('gitcharm');
+    const cfg = vscode.workspace.getConfiguration('gitchyan');
     const maxDiffChars: number = cfg.get('ai.maxDiffChars', 8000);
 
     const [diff, fullMessage, commitMeta] = await Promise.all([
@@ -268,7 +268,7 @@ async function handleMessage(
   switch (msg.type) {
     case 'COMMITFULLDETAIL_EXPLAIN': {
       const { openAiExplainDetail } = await import('./AiExplainDetailPanel');
-      const cfg = vscode.workspace.getConfiguration('gitcharm');
+      const cfg = vscode.workspace.getConfiguration('gitchyan');
       const shortHash = msg.hash.startsWith('stash@{') ? msg.hash : msg.hash.slice(0, 7);
       openAiExplainDetail(
         extensionUri,
@@ -339,7 +339,7 @@ async function handleMessage(
     }
 
     case 'LOG_SHOW_FILE_HISTORY': {
-      await vscode.commands.executeCommand('gitcharm.showFileHistory', vscode.Uri.file(path.join(repo.rootPath, msg.filePath)));
+      await vscode.commands.executeCommand('gitchyan.showFileHistory', vscode.Uri.file(path.join(repo.rootPath, msg.filePath)));
       return;
     }
 

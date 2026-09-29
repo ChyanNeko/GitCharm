@@ -1,9 +1,9 @@
 {
-  "name": "gitcharm",
-  "displayName": "GitCharm",
+  "name": "gitchyan",
+  "displayName": "gitchyan",
   "description": "%extension.description%",
   "version": "0.6.0",
-  "publisher": "RioNoir",
+  "publisher": "Nekochyan",
   "license": "GPL-3.0-only",
   "repository": {
     "type": "git",
@@ -45,923 +45,911 @@
   "activationEvents": [
     "workspaceContains:**/.git",
     "onStartupFinished",
-    "onView:gitcharm.commitPanel",
-    "onView:gitcharm.gitLog",
-    "onCommand:gitcharm.openLog",
-    "onWebviewPanel:gitcharm.undocked",
-    "onWebviewPanel:gitcharm.commitFullDetail",
-    "onWebviewPanel:gitcharm.pullRequestDetail"
+    "onView:gitchyan.commitPanel",
+    "onView:gitchyan.gitLog",
+    "onCommand:gitchyan.openLog",
+    "onWebviewPanel:gitchyan.undocked",
+    "onWebviewPanel:gitchyan.commitFullDetail",
+    "onWebviewPanel:gitchyan.pullRequestDetail"
   ],
   "main": "./out/host/extension.js",
   "l10n": "./l10n",
   "contributes": {
     "submenus": [
       {
-        "id": "gitcharm/explorer",
-        "label": "GitCharm"
+        "id": "gitchyan/explorer",
+        "label": "gitchyan"
       },
       {
-        "id": "gitcharm/commitPanel.fileView",
+        "id": "gitchyan/commitPanel.fileView",
         "label": "%submenu.commitPanel.fileView.label%"
       },
       {
-        "id": "gitcharm/commitPanel.sortRepos",
+        "id": "gitchyan/commitPanel.sortRepos",
         "label": "%submenu.commitPanel.sortRepos.label%"
       },
       {
-        "id": "gitcharm/commitPanel.reposWithoutChanges",
+        "id": "gitchyan/commitPanel.reposWithoutChanges",
         "label": "%submenu.commitPanel.reposWithoutChanges.label%"
       }
     ],
     "viewsContainers": {
       "activitybar": [
         {
-          "id": "gitcharm-commit",
-          "title": "GitCharm",
+          "id": "gitchyan-commit",
+          "title": "gitchyan",
           "icon": "media/icons/git-commit.svg"
         }
       ],
       "panel": [
         {
-          "id": "gitcharm-log",
+          "id": "gitchyan-log",
           "title": "%viewsContainer.gitcharm-log.title%",
           "icon": "media/icons/git-merge.svg"
         }
       ]
     },
     "views": {
-      "gitcharm-commit": [
+      "gitchyan-commit": [
         {
           "type": "webview",
-          "id": "gitcharm.commitPanel",
-          "name": "GitCharm",
+          "id": "gitchyan.commitPanel",
+          "name": "gitchyan",
           "retainContextWhenHidden": true
         },
         {
-          "id": "gitcharm.commitBadge",
+          "id": "gitchyan.commitBadge",
           "name": "",
           "when": "false"
         }
       ],
-      "gitcharm-log": [
+      "gitchyan-log": [
         {
           "type": "webview",
-          "id": "gitcharm.gitLog",
+          "id": "gitchyan.gitLog",
           "name": "%view.gitLog.name%",
           "retainContextWhenHidden": true,
-          "when": "!gitcharm.gitLogDefaultUndocked"
+          "when": "!gitchyan.gitLogDefaultUndocked"
         }
       ]
     },
     "commands": [
       {
-        "command": "gitcharm.openLog",
+        "command": "gitchyan.openLog",
         "title": "%command.openLog.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(history)"
       },
       {
-        "command": "gitcharm.showOutputLog",
+        "command": "gitchyan.showOutputLog",
         "title": "%command.showOutputLog.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.commit",
+        "command": "gitchyan.commit",
         "title": "%command.commit.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.commitAndPush",
+        "command": "gitchyan.commitAndPush",
         "title": "%command.commitAndPush.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.pull",
+        "command": "gitchyan.pull",
         "title": "%command.pull.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.push",
+        "command": "gitchyan.push",
         "title": "%command.push.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(repo-push)"
       },
       {
-        "command": "gitcharm.fetchAll",
+        "command": "gitchyan.fetchAll",
         "title": "%command.fetchAll.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(repo-fetch)"
       },
       {
-        "command": "gitcharm.checkOrphanBranches",
+        "command": "gitchyan.checkOrphanBranches",
         "title": "%command.checkOrphanBranches.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(cloud-offline)"
       },
       {
-        "command": "gitcharm.syncAll",
+        "command": "gitchyan.syncAll",
         "title": "%command.syncAll.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(sync)"
       },
       {
-        "command": "gitcharm.openMergeEditor",
+        "command": "gitchyan.openMergeEditor",
         "title": "%command.openMergeEditor.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.refreshCommitPanel",
+        "command": "gitchyan.refreshCommitPanel",
         "title": "%command.refreshCommitPanel.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(refresh)"
       },
       {
-        "command": "gitcharm.setFileViewFlat",
+        "command": "gitchyan.setFileViewFlat",
         "title": "%command.setFileViewFlat.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.setFileViewFlatChecked",
+        "command": "gitchyan.setFileViewFlatChecked",
         "title": "%command.setFileViewFlatChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.setFileViewTree",
+        "command": "gitchyan.setFileViewTree",
         "title": "%command.setFileViewTree.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.setFileViewTreeChecked",
+        "command": "gitchyan.setFileViewTreeChecked",
         "title": "%command.setFileViewTreeChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByDiscovery",
+        "command": "gitchyan.sortReposByDiscovery",
         "title": "%command.sortReposByDiscovery.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByDiscoveryChecked",
+        "command": "gitchyan.sortReposByDiscoveryChecked",
         "title": "%command.sortReposByDiscoveryChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByName",
+        "command": "gitchyan.sortReposByName",
         "title": "%command.sortReposByName.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByNameChecked",
+        "command": "gitchyan.sortReposByNameChecked",
         "title": "%command.sortReposByNameChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByPath",
+        "command": "gitchyan.sortReposByPath",
         "title": "%command.sortReposByPath.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.sortReposByPathChecked",
+        "command": "gitchyan.sortReposByPathChecked",
         "title": "%command.sortReposByPathChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.showReposWithoutChanges",
+        "command": "gitchyan.showReposWithoutChanges",
         "title": "%command.showReposWithoutChanges.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.showReposWithoutChangesChecked",
+        "command": "gitchyan.showReposWithoutChangesChecked",
         "title": "%command.showReposWithoutChangesChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.hideReposWithoutChanges",
+        "command": "gitchyan.hideReposWithoutChanges",
         "title": "%command.hideReposWithoutChanges.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.hideReposWithoutChangesChecked",
+        "command": "gitchyan.hideReposWithoutChangesChecked",
         "title": "%command.hideReposWithoutChangesChecked.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.showBranchMenu",
+        "command": "gitchyan.showBranchMenu",
         "title": "%command.showBranchMenu.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(git-branch)"
       },
       {
-        "command": "gitcharm.updateProject",
+        "command": "gitchyan.updateProject",
         "title": "%command.updateProject.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(repo-pull)"
       },
       {
-        "command": "gitcharm.openSettings",
+        "command": "gitchyan.openSettings",
         "title": "%command.openSettings.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(settings-gear)"
       },
       {
-        "command": "gitcharm.resetViewLocations",
+        "command": "gitchyan.resetViewLocations",
         "title": "%command.resetViewLocations.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(discard)"
       },
       {
-        "command": "gitcharm.openGitAnnotations",
+        "command": "gitchyan.openGitAnnotations",
         "title": "%command.openGitAnnotations.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(git-commit)"
       },
       {
-        "command": "gitcharm.closeGitAnnotations",
+        "command": "gitchyan.closeGitAnnotations",
         "title": "%command.closeGitAnnotations.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(git-commit)"
       },
       {
-        "command": "gitcharm.toggleGitAnnotations",
+        "command": "gitchyan.toggleGitAnnotations",
         "title": "%command.toggleGitAnnotations.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(git-commit)"
       },
       {
-        "command": "gitcharm.navigateToAnnotationCommit",
+        "command": "gitchyan.navigateToAnnotationCommit",
         "title": "%command.navigateToAnnotationCommit.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.manageHiddenRepos",
+        "command": "gitchyan.manageHiddenRepos",
         "title": "%command.manageHiddenRepos.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(eye-closed)"
       },
       {
-        "command": "gitcharm.manageProfiles",
+        "command": "gitchyan.manageProfiles",
         "title": "%command.manageProfiles.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(account)"
       },
       {
-        "command": "gitcharm.switchProfile",
+        "command": "gitchyan.switchProfile",
         "title": "%command.switchProfile.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(account)"
       },
       {
-        "command": "gitcharm.submodule.init",
+        "command": "gitchyan.submodule.init",
         "title": "%command.submodule.init.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.submodule.update",
+        "command": "gitchyan.submodule.update",
         "title": "%command.submodule.update.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.submodule.updateRecursive",
+        "command": "gitchyan.submodule.updateRecursive",
         "title": "%command.submodule.updateRecursive.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.submodule.deinit",
+        "command": "gitchyan.submodule.deinit",
         "title": "%command.submodule.deinit.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.submodule.deinitForce",
+        "command": "gitchyan.submodule.deinitForce",
         "title": "%command.submodule.deinitForce.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.submodule.openInNewWindow",
+        "command": "gitchyan.submodule.openInNewWindow",
         "title": "%command.submodule.openInNewWindow.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.worktree.add",
+        "command": "gitchyan.worktree.add",
         "title": "%command.worktree.add.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.worktree.prune",
+        "command": "gitchyan.worktree.prune",
         "title": "%command.worktree.prune.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.pullRequests.manageCredentials",
+        "command": "gitchyan.pullRequests.manageCredentials",
         "title": "%command.pullRequests.manageCredentials.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.pullRequests.refresh",
+        "command": "gitchyan.pullRequests.refresh",
         "title": "%command.pullRequests.refresh.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.selectAiModel",
+        "command": "gitchyan.selectAiModel",
         "title": "%command.selectAiModel.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.customizeAiPrompts",
+        "command": "gitchyan.customizeAiPrompts",
         "title": "%command.customizeAiPrompts.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.showBranchOptions",
+        "command": "gitchyan.showBranchOptions",
         "title": "%command.showBranchOptions.title%",
-        "category": "GitCharm"
+        "category": "gitchyan"
       },
       {
-        "command": "gitcharm.undock",
+        "command": "gitchyan.undock",
         "title": "%command.undock.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(multiple-windows)"
       },
       {
-        "command": "gitcharm.log.fetchAndRefresh",
+        "command": "gitchyan.log.fetchAndRefresh",
         "title": "%command.logFetchAndRefresh.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(repo-fetch)"
       },
       {
-        "command": "gitcharm.log.refresh",
+        "command": "gitchyan.log.refresh",
         "title": "%command.logRefresh.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(refresh)"
       },
       {
-        "command": "gitcharm.log.clearFilters",
+        "command": "gitchyan.log.clearFilters",
         "title": "%command.logClearFilters.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(clear-all)"
       },
       {
-        "command": "gitcharm.log.hideBranchSidebar",
+        "command": "gitchyan.log.hideBranchSidebar",
         "title": "%command.logHideBranchSidebar.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(layout-sidebar-left)"
       },
       {
-        "command": "gitcharm.log.showBranchSidebar",
+        "command": "gitchyan.log.showBranchSidebar",
         "title": "%command.logShowBranchSidebar.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(layout-sidebar-left-off)"
       },
       {
-        "command": "gitcharm.log.hideFilters",
+        "command": "gitchyan.log.hideFilters",
         "title": "%command.logHideFilters.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(filter-filled)"
       },
       {
-        "command": "gitcharm.log.showFilters",
+        "command": "gitchyan.log.showFilters",
         "title": "%command.logShowFilters.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(filter)"
       },
       {
-        "command": "gitcharm.setGitLogDefaultLocation",
+        "command": "gitchyan.setGitLogDefaultLocation",
         "title": "%command.setGitLogDefaultLocation.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(settings-gear)"
       },
       {
-        "command": "gitcharm.showFileHistory",
+        "command": "gitchyan.showFileHistory",
         "title": "%command.showFileHistory.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(history)"
       },
       {
-        "command": "gitcharm.compareWith",
+        "command": "gitchyan.compareWith",
         "title": "%command.compareWith.title%",
-        "category": "GitCharm",
+        "category": "gitchyan",
         "icon": "$(git-compare)"
       }
     ],
     "menus": {
       "view/title": [
         {
-          "command": "gitcharm.fetchAll",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.fetchAll",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.updateProject",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.updateProject",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.push",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.push",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@3"
         },
         {
-          "command": "gitcharm.syncAll",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.syncAll",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@4"
         },
         {
-          "command": "gitcharm.showBranchMenu",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.showBranchMenu",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@5"
         },
         {
-          "command": "gitcharm.openLog",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.openLog",
+          "when": "view == gitchyan.commitPanel",
           "group": "navigation@6"
         },
         {
-          "command": "gitcharm.refreshCommitPanel",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.refreshCommitPanel",
+          "when": "view == gitchyan.commitPanel",
           "group": "1_viewSort@1"
         },
         {
-          "command": "gitcharm.openSettings",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.openSettings",
+          "when": "view == gitchyan.commitPanel",
           "group": "1_viewSort@2"
         },
         {
-          "submenu": "gitcharm/commitPanel.fileView",
-          "when": "view == gitcharm.commitPanel",
+          "submenu": "gitchyan/commitPanel.fileView",
+          "when": "view == gitchyan.commitPanel",
           "group": "2_viewSort@1"
         },
         {
-          "submenu": "gitcharm/commitPanel.sortRepos",
-          "when": "view == gitcharm.commitPanel",
+          "submenu": "gitchyan/commitPanel.sortRepos",
+          "when": "view == gitchyan.commitPanel",
           "group": "2_viewSort@2"
         },
         {
-          "submenu": "gitcharm/commitPanel.reposWithoutChanges",
-          "when": "view == gitcharm.commitPanel",
+          "submenu": "gitchyan/commitPanel.reposWithoutChanges",
+          "when": "view == gitchyan.commitPanel",
           "group": "2_viewSort@3"
         },
         {
-          "command": "gitcharm.manageHiddenRepos",
-          "when": "view == gitcharm.commitPanel",
+          "command": "gitchyan.manageHiddenRepos",
+          "when": "view == gitchyan.commitPanel",
           "group": "2_viewSort@4"
         },
         {
-          "command": "gitcharm.log.fetchAndRefresh",
-          "when": "view == gitcharm.gitLog",
+          "command": "gitchyan.log.fetchAndRefresh",
+          "when": "view == gitchyan.gitLog",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.log.clearFilters",
-          "when": "view == gitcharm.gitLog && gitcharm.logFiltersHidden && gitcharm.logFiltersActive",
+          "command": "gitchyan.log.clearFilters",
+          "when": "view == gitchyan.gitLog && gitchyan.logFiltersHidden && gitchyan.logFiltersActive",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.log.hideFilters",
-          "when": "view == gitcharm.gitLog && !gitcharm.logFiltersHidden",
+          "command": "gitchyan.log.hideFilters",
+          "when": "view == gitchyan.gitLog && !gitchyan.logFiltersHidden",
           "group": "navigation@3"
         },
         {
-          "command": "gitcharm.log.showFilters",
-          "when": "view == gitcharm.gitLog && gitcharm.logFiltersHidden",
+          "command": "gitchyan.log.showFilters",
+          "when": "view == gitchyan.gitLog && gitchyan.logFiltersHidden",
           "group": "navigation@3"
         },
         {
-          "command": "gitcharm.log.hideBranchSidebar",
-          "when": "view == gitcharm.gitLog && !gitcharm.logSidebarHidden",
+          "command": "gitchyan.log.hideBranchSidebar",
+          "when": "view == gitchyan.gitLog && !gitchyan.logSidebarHidden",
           "group": "navigation@4"
         },
         {
-          "command": "gitcharm.log.showBranchSidebar",
-          "when": "view == gitcharm.gitLog && gitcharm.logSidebarHidden",
+          "command": "gitchyan.log.showBranchSidebar",
+          "when": "view == gitchyan.gitLog && gitchyan.logSidebarHidden",
           "group": "navigation@4"
         },
         {
-          "command": "gitcharm.undock",
-          "when": "view == gitcharm.gitLog",
+          "command": "gitchyan.undock",
+          "when": "view == gitchyan.gitLog",
           "group": "navigation@5"
         },
         {
-          "command": "gitcharm.log.refresh",
-          "when": "view == gitcharm.gitLog",
+          "command": "gitchyan.log.refresh",
+          "when": "view == gitchyan.gitLog",
           "group": "1_log@1"
         },
         {
-          "command": "gitcharm.setGitLogDefaultLocation",
-          "when": "view == gitcharm.gitLog",
+          "command": "gitchyan.setGitLogDefaultLocation",
+          "when": "view == gitchyan.gitLog",
           "group": "2_log@1"
         },
         {
-          "command": "gitcharm.manageHiddenRepos",
-          "when": "view == gitcharm.gitLog",
+          "command": "gitchyan.manageHiddenRepos",
+          "when": "view == gitchyan.gitLog",
           "group": "2_log@2"
         }
       ],
-      "gitcharm/commitPanel.fileView": [
+      "gitchyan/commitPanel.fileView": [
         {
-          "command": "gitcharm.setFileViewFlat",
-          "when": "gitcharm.fileViewMode != 'flat'",
+          "command": "gitchyan.setFileViewFlat",
+          "when": "gitchyan.fileViewMode != 'flat'",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.setFileViewFlatChecked",
-          "when": "gitcharm.fileViewMode == 'flat'",
+          "command": "gitchyan.setFileViewFlatChecked",
+          "when": "gitchyan.fileViewMode == 'flat'",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.setFileViewTree",
-          "when": "gitcharm.fileViewMode != 'tree'",
+          "command": "gitchyan.setFileViewTree",
+          "when": "gitchyan.fileViewMode != 'tree'",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.setFileViewTreeChecked",
-          "when": "gitcharm.fileViewMode == 'tree'",
+          "command": "gitchyan.setFileViewTreeChecked",
+          "when": "gitchyan.fileViewMode == 'tree'",
           "group": "navigation@2"
         }
       ],
-      "gitcharm/commitPanel.sortRepos": [
+      "gitchyan/commitPanel.sortRepos": [
         {
-          "command": "gitcharm.sortReposByDiscovery",
-          "when": "gitcharm.repoSortMode != 'discovery'",
+          "command": "gitchyan.sortReposByDiscovery",
+          "when": "gitchyan.repoSortMode != 'discovery'",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.sortReposByDiscoveryChecked",
-          "when": "gitcharm.repoSortMode == 'discovery'",
+          "command": "gitchyan.sortReposByDiscoveryChecked",
+          "when": "gitchyan.repoSortMode == 'discovery'",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.sortReposByName",
-          "when": "gitcharm.repoSortMode != 'name'",
+          "command": "gitchyan.sortReposByName",
+          "when": "gitchyan.repoSortMode != 'name'",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.sortReposByNameChecked",
-          "when": "gitcharm.repoSortMode == 'name'",
+          "command": "gitchyan.sortReposByNameChecked",
+          "when": "gitchyan.repoSortMode == 'name'",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.sortReposByPath",
-          "when": "gitcharm.repoSortMode != 'path'",
+          "command": "gitchyan.sortReposByPath",
+          "when": "gitchyan.repoSortMode != 'path'",
           "group": "navigation@3"
         },
         {
-          "command": "gitcharm.sortReposByPathChecked",
-          "when": "gitcharm.repoSortMode == 'path'",
+          "command": "gitchyan.sortReposByPathChecked",
+          "when": "gitchyan.repoSortMode == 'path'",
           "group": "navigation@3"
         }
       ],
-      "gitcharm/commitPanel.reposWithoutChanges": [
+      "gitchyan/commitPanel.reposWithoutChanges": [
         {
-          "command": "gitcharm.showReposWithoutChanges",
-          "when": "gitcharm.hideReposWithoutChanges",
+          "command": "gitchyan.showReposWithoutChanges",
+          "when": "gitchyan.hideReposWithoutChanges",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.showReposWithoutChangesChecked",
-          "when": "!gitcharm.hideReposWithoutChanges",
+          "command": "gitchyan.showReposWithoutChangesChecked",
+          "when": "!gitchyan.hideReposWithoutChanges",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.hideReposWithoutChanges",
-          "when": "!gitcharm.hideReposWithoutChanges",
+          "command": "gitchyan.hideReposWithoutChanges",
+          "when": "!gitchyan.hideReposWithoutChanges",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.hideReposWithoutChangesChecked",
-          "when": "gitcharm.hideReposWithoutChanges",
+          "command": "gitchyan.hideReposWithoutChangesChecked",
+          "when": "gitchyan.hideReposWithoutChanges",
           "group": "navigation@2"
         }
       ],
       "editor/title": [
         {
-          "command": "gitcharm.fetchAll",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.fetchAll",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.updateProject",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.updateProject",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@2"
         },
         {
-          "command": "gitcharm.push",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.push",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@3"
         },
         {
-          "command": "gitcharm.syncAll",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.syncAll",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@4"
         },
         {
-          "command": "gitcharm.showBranchMenu",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.showBranchMenu",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@5"
         },
         {
-          "command": "gitcharm.log.clearFilters",
-          "when": "activeWebviewPanelId == gitcharm.undocked && gitcharm.undockedLogFiltersHidden && gitcharm.undockedLogFiltersActive",
+          "command": "gitchyan.log.clearFilters",
+          "when": "activeWebviewPanelId == gitchyan.undocked && gitchyan.undockedLogFiltersHidden && gitchyan.undockedLogFiltersActive",
           "group": "navigation@6"
         },
         {
-          "command": "gitcharm.log.hideFilters",
-          "when": "activeWebviewPanelId == gitcharm.undocked && !gitcharm.undockedLogFiltersHidden",
+          "command": "gitchyan.log.hideFilters",
+          "when": "activeWebviewPanelId == gitchyan.undocked && !gitchyan.undockedLogFiltersHidden",
           "group": "navigation@7"
         },
         {
-          "command": "gitcharm.log.showFilters",
-          "when": "activeWebviewPanelId == gitcharm.undocked && gitcharm.undockedLogFiltersHidden",
+          "command": "gitchyan.log.showFilters",
+          "when": "activeWebviewPanelId == gitchyan.undocked && gitchyan.undockedLogFiltersHidden",
           "group": "navigation@7"
         },
         {
-          "command": "gitcharm.log.hideBranchSidebar",
-          "when": "activeWebviewPanelId == gitcharm.undocked && !gitcharm.undockedLogSidebarHidden",
+          "command": "gitchyan.log.hideBranchSidebar",
+          "when": "activeWebviewPanelId == gitchyan.undocked && !gitchyan.undockedLogSidebarHidden",
           "group": "navigation@8"
         },
         {
-          "command": "gitcharm.log.showBranchSidebar",
-          "when": "activeWebviewPanelId == gitcharm.undocked && gitcharm.undockedLogSidebarHidden",
+          "command": "gitchyan.log.showBranchSidebar",
+          "when": "activeWebviewPanelId == gitchyan.undocked && gitchyan.undockedLogSidebarHidden",
           "group": "navigation@8"
         },
         {
-          "command": "gitcharm.openSettings",
-          "when": "activeWebviewPanelId == gitcharm.undocked",
+          "command": "gitchyan.openSettings",
+          "when": "activeWebviewPanelId == gitchyan.undocked",
           "group": "navigation@9"
         }
       ],
       "scm/sourceControl": [
         {
-          "command": "gitcharm.manageHiddenRepos",
-          "group": "gitcharm@1"
+          "command": "gitchyan.manageHiddenRepos",
+          "group": "gitchyan@1"
         }
       ],
       "commandPalette": [
         {
-          "command": "gitcharm.openLog"
+          "command": "gitchyan.openLog"
         },
         {
-          "command": "gitcharm.showBranchMenu"
+          "command": "gitchyan.showBranchMenu"
         },
         {
-          "command": "gitcharm.commit"
+          "command": "gitchyan.commit"
         },
         {
-          "command": "gitcharm.fetchAll"
+          "command": "gitchyan.fetchAll"
         },
         {
-          "command": "gitcharm.checkOrphanBranches"
+          "command": "gitchyan.checkOrphanBranches"
         },
         {
-          "command": "gitcharm.updateProject"
+          "command": "gitchyan.updateProject"
         },
         {
-          "command": "gitcharm.push"
+          "command": "gitchyan.push"
         },
         {
-          "command": "gitcharm.syncAll"
+          "command": "gitchyan.syncAll"
         },
         {
-          "command": "gitcharm.refreshCommitPanel"
+          "command": "gitchyan.refreshCommitPanel"
         },
         {
-          "command": "gitcharm.setFileViewFlat",
+          "command": "gitchyan.setFileViewFlat",
           "when": "false"
         },
         {
-          "command": "gitcharm.setFileViewFlatChecked",
+          "command": "gitchyan.setFileViewFlatChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.setFileViewTree",
+          "command": "gitchyan.setFileViewTree",
           "when": "false"
         },
         {
-          "command": "gitcharm.setFileViewTreeChecked",
+          "command": "gitchyan.setFileViewTreeChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByDiscovery",
+          "command": "gitchyan.sortReposByDiscovery",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByDiscoveryChecked",
+          "command": "gitchyan.sortReposByDiscoveryChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByName",
+          "command": "gitchyan.sortReposByName",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByNameChecked",
+          "command": "gitchyan.sortReposByNameChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByPath",
+          "command": "gitchyan.sortReposByPath",
           "when": "false"
         },
         {
-          "command": "gitcharm.sortReposByPathChecked",
+          "command": "gitchyan.sortReposByPathChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.showReposWithoutChanges",
+          "command": "gitchyan.showReposWithoutChanges",
           "when": "false"
         },
         {
-          "command": "gitcharm.showReposWithoutChangesChecked",
+          "command": "gitchyan.showReposWithoutChangesChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.hideReposWithoutChanges",
+          "command": "gitchyan.hideReposWithoutChanges",
           "when": "false"
         },
         {
-          "command": "gitcharm.hideReposWithoutChangesChecked",
+          "command": "gitchyan.hideReposWithoutChangesChecked",
           "when": "false"
         },
         {
-          "command": "gitcharm.openMergeEditor"
+          "command": "gitchyan.openMergeEditor"
         },
         {
-          "command": "gitcharm.manageHiddenRepos"
+          "command": "gitchyan.manageHiddenRepos"
         },
         {
-          "command": "gitcharm.manageProfiles"
+          "command": "gitchyan.manageProfiles"
         },
         {
-          "command": "gitcharm.switchProfile"
+          "command": "gitchyan.switchProfile"
         },
         {
-          "command": "gitcharm.selectAiModel"
+          "command": "gitchyan.selectAiModel"
         },
         {
-          "command": "gitcharm.customizeAiPrompts"
+          "command": "gitchyan.customizeAiPrompts"
         },
         {
-          "command": "gitcharm.undock"
+          "command": "gitchyan.undock"
         },
         {
-          "command": "gitcharm.log.fetchAndRefresh"
+          "command": "gitchyan.log.fetchAndRefresh"
         },
         {
-          "command": "gitcharm.log.refresh"
+          "command": "gitchyan.log.refresh"
         },
         {
-          "command": "gitcharm.log.clearFilters"
+          "command": "gitchyan.log.clearFilters"
         },
         {
-          "command": "gitcharm.log.hideFilters",
-          "when": "!gitcharm.logFiltersHidden"
+          "command": "gitchyan.log.hideFilters",
+          "when": "!gitchyan.logFiltersHidden"
         },
         {
-          "command": "gitcharm.log.hideBranchSidebar",
-          "when": "!gitcharm.logSidebarHidden"
+          "command": "gitchyan.log.hideBranchSidebar",
+          "when": "!gitchyan.logSidebarHidden"
         },
         {
-          "command": "gitcharm.log.showBranchSidebar",
-          "when": "gitcharm.logSidebarHidden"
+          "command": "gitchyan.log.showBranchSidebar",
+          "when": "gitchyan.logSidebarHidden"
         },
         {
-          "command": "gitcharm.log.showFilters",
-          "when": "gitcharm.logFiltersHidden"
+          "command": "gitchyan.log.showFilters",
+          "when": "gitchyan.logFiltersHidden"
         },
         {
-          "command": "gitcharm.setGitLogDefaultLocation"
+          "command": "gitchyan.setGitLogDefaultLocation"
         },
         {
-          "command": "gitcharm.submodule.init"
+          "command": "gitchyan.submodule.init"
         },
         {
-          "command": "gitcharm.submodule.update"
+          "command": "gitchyan.submodule.update"
         },
         {
-          "command": "gitcharm.submodule.updateRecursive"
+          "command": "gitchyan.submodule.updateRecursive"
         },
         {
-          "command": "gitcharm.submodule.deinit"
+          "command": "gitchyan.submodule.deinit"
         },
         {
-          "command": "gitcharm.submodule.deinitForce"
+          "command": "gitchyan.submodule.deinitForce"
         },
         {
-          "command": "gitcharm.submodule.openInNewWindow"
+          "command": "gitchyan.submodule.openInNewWindow"
         },
         {
-          "command": "gitcharm.worktree.add"
+          "command": "gitchyan.worktree.add"
         },
         {
-          "command": "gitcharm.worktree.prune"
+          "command": "gitchyan.worktree.prune"
         },
         {
-          "command": "gitcharm.openGitAnnotations",
-          "when": "resourceScheme == file && config.gitcharm.gitAnnotations.enabled"
+          "command": "gitchyan.openGitAnnotations",
+          "when": "resourceScheme == file && config.gitchyan.gitAnnotations.enabled"
         },
         {
-          "command": "gitcharm.closeGitAnnotations",
-          "when": "resourceScheme == file && gitcharm.annotationsVisible"
+          "command": "gitchyan.closeGitAnnotations",
+          "when": "resourceScheme == file && gitchyan.annotationsVisible"
         },
         {
-          "command": "gitcharm.navigateToAnnotationCommit",
+          "command": "gitchyan.navigateToAnnotationCommit",
           "when": "false"
         },
         {
-          "command": "gitcharm.showFileHistory",
+          "command": "gitchyan.showFileHistory",
           "when": "resourceScheme == file"
         },
         {
-          "command": "gitcharm.compareWith",
+          "command": "gitchyan.compareWith",
           "when": "resourceScheme == file"
         },
         {
-          "command": "gitcharm.commitAndPush",
+          "command": "gitchyan.commitAndPush",
           "when": "false"
         },
         {
-          "command": "gitcharm.pull",
+          "command": "gitchyan.pull",
           "when": "false"
         },
         {
-          "command": "gitcharm.openSettings",
+          "command": "gitchyan.openSettings",
           "when": "false"
         },
         {
-          "command": "gitcharm.showBranchOptions",
+          "command": "gitchyan.showBranchOptions",
           "when": "false"
         }
       ],
       "editor/lineNumber/context": [
         {
-          "command": "gitcharm.openGitAnnotations",
-          "when": "resourceScheme == file && config.gitcharm.gitAnnotations.enabled && !gitcharm.annotationsVisible",
-          "group": "gitcharm@1"
+          "command": "gitchyan.openGitAnnotations",
+          "when": "resourceScheme == file && config.gitchyan.gitAnnotations.enabled && !gitchyan.annotationsVisible",
+          "group": "gitchyan@1"
         },
         {
-          "command": "gitcharm.closeGitAnnotations",
-          "when": "resourceScheme == file && gitcharm.annotationsVisible",
-          "group": "gitcharm@1"
+          "command": "gitchyan.closeGitAnnotations",
+          "when": "resourceScheme == file && gitchyan.annotationsVisible",
+          "group": "gitchyan@1"
         }
       ],
       "explorer/context": [
         {
-          "submenu": "gitcharm/explorer",
+          "submenu": "gitchyan/explorer",
           "when": "resourceScheme == file",
-          "group": "gitcharm@1"
+          "group": "gitchyan@1"
         }
       ],
-      "gitcharm/explorer": [
+      "gitchyan/explorer": [
         {
-          "command": "gitcharm.showFileHistory",
+          "command": "gitchyan.showFileHistory",
           "when": "resourceScheme == file && !explorerResourceIsFolder",
           "group": "navigation@1"
         },
         {
-          "command": "gitcharm.compareWith",
+          "command": "gitchyan.compareWith",
           "when": "resourceScheme == file",
           "group": "navigation@2"
         }
       ],
       "editor/context": [
         {
-          "command": "gitcharm.showFileHistory",
+          "command": "gitchyan.showFileHistory",
           "when": "resourceScheme == file",
-          "group": "gitcharm@1"
+          "group": "gitchyan@1"
         },
         {
-          "command": "gitcharm.compareWith",
+          "command": "gitchyan.compareWith",
           "when": "resourceScheme == file",
-          "group": "gitcharm@1"
+          "group": "gitchyan@1"
         },
         {
-          "command": "gitcharm.openMergeEditor",
+          "command": "gitchyan.openMergeEditor",
           "when": "resourceScheme == file",
-          "group": "gitcharm@2"
+          "group": "gitchyan@2"
         },
         {
-          "command": "gitcharm.openGitAnnotations",
-          "when": "resourceScheme == file && config.gitcharm.gitAnnotations.enabled && !gitcharm.annotationsVisible",
-          "group": "gitcharm@3"
+          "command": "gitchyan.openGitAnnotations",
+          "when": "resourceScheme == file && config.gitchyan.gitAnnotations.enabled && !gitchyan.annotationsVisible",
+          "group": "gitchyan@3"
         },
         {
-          "command": "gitcharm.closeGitAnnotations",
-          "when": "resourceScheme == file && gitcharm.annotationsVisible",
-          "group": "gitcharm@3"
+          "command": "gitchyan.closeGitAnnotations",
+          "when": "resourceScheme == file && gitchyan.annotationsVisible",
+          "group": "gitchyan@3"
         }
       ]
     },
-    "keybindings": [
-      {
-        "command": "gitcharm.openLog",
-        "key": "ctrl+alt+l",
-        "mac": "cmd+alt+l"
-      },
-      {
-        "command": "gitcharm.commit",
-        "key": "ctrl+alt+k",
-        "mac": "cmd+alt+k"
-      }
-    ],
     "colors": [
       {
-        "id": "gitcharm.statusBarPullForeground",
+        "id": "gitchyan.statusBarPullForeground",
         "description": "%color.statusBarPullForeground.description%",
         "defaults": {
           "dark": "#64b5f6",
@@ -971,7 +959,7 @@
         }
       },
       {
-        "id": "gitcharm.statusBarPushForeground",
+        "id": "gitchyan.statusBarPushForeground",
         "description": "%color.statusBarPushForeground.description%",
         "defaults": {
           "dark": "#ce93d8",
@@ -981,7 +969,7 @@
         }
       },
       {
-        "id": "gitcharm.statusBarDirtyForeground",
+        "id": "gitchyan.statusBarDirtyForeground",
         "description": "%color.statusBarDirtyForeground.description%",
         "defaults": {
           "dark": "#81c784",
@@ -995,7 +983,7 @@
       {
         "title": "%config.section.basicSettings.title%",
         "properties": {
-          "gitcharm.graphMaxCommits": {
+          "gitchyan.graphMaxCommits": {
             "order": 80,
             "type": "number",
             "default": 1000,
@@ -1003,7 +991,7 @@
             "maximum": 10000,
             "description": "%config.graphMaxCommits.description%"
           },
-          "gitcharm.repositoryScanMaxDepth": {
+          "gitchyan.repositoryScanMaxDepth": {
             "order": 60,
             "type": "number",
             "default": 1,
@@ -1011,7 +999,7 @@
             "maximum": 10,
             "description": "%config.repositoryScanMaxDepth.description%"
           },
-          "gitcharm.repositoryScanIgnoredFolders": {
+          "gitchyan.repositoryScanIgnoredFolders": {
             "order": 70,
             "type": "array",
             "default": [
@@ -1022,7 +1010,7 @@
             },
             "description": "%config.repositoryScanIgnoredFolders.description%"
           },
-          "gitcharm.branchNameModels": {
+          "gitchyan.branchNameModels": {
             "order": 75,
             "type": "array",
             "default": [],
@@ -1031,69 +1019,69 @@
             },
             "description": "%config.branchNameModels.description%"
           },
-          "gitcharm.fetchOnStartup": {
+          "gitchyan.fetchOnStartup": {
             "order": 40,
             "type": "boolean",
             "default": true,
             "description": "%config.fetchOnStartup.description%"
           },
-          "gitcharm.notifyOnIncomingCommits": {
+          "gitchyan.notifyOnIncomingCommits": {
             "order": 50,
             "type": "boolean",
             "default": true,
             "description": "%config.notifyOnIncomingCommits.description%"
           },
-          "gitcharm.notifyOnUnpushedCommits": {
+          "gitchyan.notifyOnUnpushedCommits": {
             "order": 55,
             "type": "boolean",
             "default": true,
             "description": "%config.notifyOnUnpushedCommits.description%"
           },
-          "gitcharm.notifyOnOrphanBranches": {
+          "gitchyan.notifyOnOrphanBranches": {
             "order": 57,
             "type": "boolean",
             "default": true,
             "description": "%config.notifyOnOrphanBranches.description%"
           },
-          "gitcharm.showLastCommitInBranchMenu": {
+          "gitchyan.showLastCommitInBranchMenu": {
             "order": 58,
             "type": "boolean",
             "default": false,
             "description": "%config.showLastCommitInBranchMenu.description%"
           },
-          "gitcharm.projectColors": {
+          "gitchyan.projectColors": {
             "order": 110,
             "type": "object",
             "default": {},
             "description": "%config.projectColors.description%"
           },
-          "gitcharm.autoRefreshInterval": {
+          "gitchyan.autoRefreshInterval": {
             "order": 30,
             "type": "number",
             "default": 0,
             "minimum": 0,
             "description": "%config.autoRefreshInterval.description%"
           },
-          "gitcharm.gitAnnotations.enabled": {
+          "gitchyan.gitAnnotations.enabled": {
             "order": 90,
             "type": "boolean",
             "default": true,
             "description": "%config.gitAnnotations.enabled.description%"
           },
-          "gitcharm.gitGhostText.enabled": {
+          "gitchyan.gitGhostText.enabled": {
             "order": 100,
             "type": "boolean",
             "default": true,
             "description": "%config.gitGhostText.enabled.description%"
           },
-          "gitcharm.avatars.enabled": {
+          "gitchyan.avatars.enabled": {
             "order": 105,
             "type": "boolean",
             "default": false,
             "scope": "application",
             "markdownDescription": "%config.avatars.enabled.markdownDescription%"
           },
-          "gitcharm.gitLogDefaultLocation": {
+          "gitchyan.gitLogDefaultLocation": {
             "order": 12,
             "type": "string",
             "enum": [
@@ -1110,7 +1098,7 @@
             "description": "%config.gitLogDefaultLocation.description%",
             "scope": "window"
           },
-          "gitcharm.gitLogDefaultLayout": {
+          "gitchyan.gitLogDefaultLayout": {
             "order": 13,
             "type": "string",
             "enum": [
@@ -1125,7 +1113,7 @@
             "description": "%config.gitLogDefaultLayout.description%",
             "scope": "window"
           },
-          "gitcharm.changesViewMode": {
+          "gitchyan.changesViewMode": {
             "order": 10,
             "type": "string",
             "enum": [
@@ -1141,13 +1129,13 @@
             "default": "simplified",
             "description": "%config.changesViewMode.description%"
           },
-          "gitcharm.promptAddUntrackedToGit": {
+          "gitchyan.promptAddUntrackedToGit": {
             "order": 25,
             "type": "boolean",
             "default": true,
             "description": "%config.promptAddUntrackedToGit.description%"
           },
-          "gitcharm.defaultCommitAction": {
+          "gitchyan.defaultCommitAction": {
             "order": 20,
             "type": "string",
             "enum": [
@@ -1161,7 +1149,7 @@
             "default": "commit",
             "description": "%config.defaultCommitAction.description%"
           },
-          "gitcharm.defaultSaveAction": {
+          "gitchyan.defaultSaveAction": {
             "order": 21,
             "type": "string",
             "enum": [
@@ -1175,13 +1163,13 @@
             "default": "stash",
             "description": "%config.defaultSaveAction.description%"
           },
-          "gitcharm.openCommitPanelOnConflictResolved": {
+          "gitchyan.openCommitPanelOnConflictResolved": {
             "order": 22,
             "type": "boolean",
             "default": true,
             "description": "%config.openCommitPanelOnConflictResolved.description%"
           },
-          "gitcharm.suppressDivergedBranchWarning": {
+          "gitchyan.suppressDivergedBranchWarning": {
             "order": 35,
             "type": "boolean",
             "default": false,
@@ -1192,19 +1180,19 @@
       {
         "title": "%config.section.aiSettings.title%",
         "properties": {
-          "gitcharm.ai.enabled": {
+          "gitchyan.ai.enabled": {
             "order": 0,
             "type": "boolean",
             "default": true,
             "description": "%config.ai.enabled.description%"
           },
-          "gitcharm.ai.language": {
+          "gitchyan.ai.language": {
             "order": 1,
             "type": "string",
             "default": "",
             "markdownDescription": "%config.ai.language.markdownDescription%"
           },
-          "gitcharm.ai.provider": {
+          "gitchyan.ai.provider": {
             "order": 2,
             "type": "string",
             "enum": [
@@ -1232,97 +1220,97 @@
             "default": "vscode-lm",
             "description": "%config.ai.provider.description%"
           },
-          "gitcharm.ai.modelId": {
+          "gitchyan.ai.modelId": {
             "order": 2,
             "type": "string",
             "default": "",
             "description": "%config.ai.modelId.description%"
           },
-          "gitcharm.ai.claudeApiKey": {
+          "gitchyan.ai.claudeApiKey": {
             "order": 3,
             "type": "string",
             "default": "",
             "description": "%config.ai.claudeApiKey.description%"
           },
-          "gitcharm.ai.claudeModel": {
+          "gitchyan.ai.claudeModel": {
             "order": 4,
             "type": "string",
             "default": "",
             "description": "%config.ai.claudeModel.description%"
           },
-          "gitcharm.ai.claudePath": {
+          "gitchyan.ai.claudePath": {
             "order": 5,
             "type": "string",
             "default": "claude",
             "description": "%config.ai.claudePath.description%"
           },
-          "gitcharm.ai.openaiApiKey": {
+          "gitchyan.ai.openaiApiKey": {
             "order": 6,
             "type": "string",
             "default": "",
             "description": "%config.ai.openaiApiKey.description%"
           },
-          "gitcharm.ai.openaiModel": {
+          "gitchyan.ai.openaiModel": {
             "order": 7,
             "type": "string",
             "default": "gpt-4o",
             "description": "%config.ai.openaiModel.description%"
           },
-          "gitcharm.ai.geminiApiKey": {
+          "gitchyan.ai.geminiApiKey": {
             "order": 8,
             "type": "string",
             "default": "",
             "description": "%config.ai.geminiApiKey.description%"
           },
-          "gitcharm.ai.geminiModel": {
+          "gitchyan.ai.geminiModel": {
             "order": 9,
             "type": "string",
             "default": "gemini-2.0-flash",
             "description": "%config.ai.geminiModel.description%"
           },
-          "gitcharm.ai.geminiPath": {
+          "gitchyan.ai.geminiPath": {
             "order": 10,
             "type": "string",
             "default": "gemini",
             "description": "%config.ai.geminiPath.description%"
           },
-          "gitcharm.ai.codexModel": {
+          "gitchyan.ai.codexModel": {
             "order": 11,
             "type": "string",
             "default": "",
             "description": "%config.ai.codexModel.description%"
           },
-          "gitcharm.ai.codexPath": {
+          "gitchyan.ai.codexPath": {
             "order": 9,
             "type": "string",
             "default": "codex",
             "description": "%config.ai.codexPath.description%"
           },
-          "gitcharm.ai.lmStudioModel": {
+          "gitchyan.ai.lmStudioModel": {
             "order": 7,
             "type": "string",
             "default": "",
             "description": "%config.ai.lmStudioModel.description%"
           },
-          "gitcharm.ai.lmStudioUrl": {
+          "gitchyan.ai.lmStudioUrl": {
             "order": 8,
             "type": "string",
             "default": "http://localhost:1234",
             "description": "%config.ai.lmStudioUrl.description%"
           },
-          "gitcharm.ai.ollamaModel": {
+          "gitchyan.ai.ollamaModel": {
             "order": 11,
             "type": "string",
             "default": "llama3",
             "description": "%config.ai.ollamaModel.description%"
           },
-          "gitcharm.ai.ollamaUrl": {
+          "gitchyan.ai.ollamaUrl": {
             "order": 12,
             "type": "string",
             "default": "http://localhost:11434",
             "description": "%config.ai.ollamaUrl.description%"
           },
-          "gitcharm.ai.maxDiffChars": {
+          "gitchyan.ai.maxDiffChars": {
             "order": 13,
             "type": "number",
             "default": 8000,
@@ -1330,35 +1318,35 @@
             "maximum": 100000,
             "description": "%config.ai.maxDiffChars.description%"
           },
-          "gitcharm.ai.prompts.commitMessage": {
+          "gitchyan.ai.prompts.commitMessage": {
             "order": 14,
             "type": "string",
             "default": "",
             "editPresentation": "multilineText",
             "markdownDescription": "%config.ai.prompts.commitMessage.markdownDescription%"
           },
-          "gitcharm.ai.prompts.pullRequestTitle": {
+          "gitchyan.ai.prompts.pullRequestTitle": {
             "order": 15,
             "type": "string",
             "default": "",
             "editPresentation": "multilineText",
             "markdownDescription": "%config.ai.prompts.pullRequestTitle.markdownDescription%"
           },
-          "gitcharm.ai.prompts.pullRequestDescription": {
+          "gitchyan.ai.prompts.pullRequestDescription": {
             "order": 16,
             "type": "string",
             "default": "",
             "editPresentation": "multilineText",
             "markdownDescription": "%config.ai.prompts.pullRequestDescription.markdownDescription%"
           },
-          "gitcharm.ai.prompts.explainCommit": {
+          "gitchyan.ai.prompts.explainCommit": {
             "order": 17,
             "type": "string",
             "default": "",
             "editPresentation": "multilineText",
             "markdownDescription": "%config.ai.prompts.explainCommit.markdownDescription%"
           },
-          "gitcharm.ai.prompts.explainPullRequest": {
+          "gitchyan.ai.prompts.explainPullRequest": {
             "order": 18,
             "type": "string",
             "default": "",
@@ -1370,19 +1358,19 @@
       {
         "title": "%config.section.pullRequests.title%",
         "properties": {
-          "gitcharm.pullRequests.hostProviderOverrides": {
+          "gitchyan.pullRequests.hostProviderOverrides": {
             "order": 1,
             "type": "object",
             "default": {},
             "description": "%config.pullRequests.hostProviderOverrides.description%"
           },
-          "gitcharm.pullRequests.defaultTargetBranch": {
+          "gitchyan.pullRequests.defaultTargetBranch": {
             "order": 2,
             "type": "string",
             "default": "",
             "description": "%config.pullRequests.defaultTargetBranch.description%"
           },
-          "gitcharm.pullRequests.defaultMergeStrategy": {
+          "gitchyan.pullRequests.defaultMergeStrategy": {
             "order": 3,
             "type": "string",
             "enum": [
@@ -1400,7 +1388,7 @@
             "default": "merge",
             "description": "%config.pullRequests.defaultMergeStrategy.description%"
           },
-          "gitcharm.pullRequests.defaultCheckoutAction": {
+          "gitchyan.pullRequests.defaultCheckoutAction": {
             "order": 4,
             "type": "string",
             "enum": [
@@ -1419,7 +1407,7 @@
       {
         "title": "%config.section.experimental.title%",
         "properties": {
-          "gitcharm.resetViewLocationsOnStartup": {
+          "gitchyan.resetViewLocationsOnStartup": {
             "order": 1,
             "type": "boolean",
             "default": false,

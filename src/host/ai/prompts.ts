@@ -5,11 +5,11 @@ import * as vscode from 'vscode';
  *
  * A prompt is made of two parts:
  * - the **instructions** (defined here, overridable per prompt by the user through the
- *   `gitcharm.ai.prompts.<id>` setting — an empty setting means "use the default below");
+ *   `gitchyan.ai.prompts.<id>` setting — an empty setting means "use the default below");
  * - the **context** (diff, changed files, commits…), built by each caller and always appended after the
  *   instructions, so a custom prompt can never lose the data the model needs.
  *
- * Instructions may use the `{language}` placeholder (the configured `gitcharm.ai.language`, else VS Code's
+ * Instructions may use the `{language}` placeholder (the configured `gitchyan.ai.language`, else VS Code's
  * display language). Anything that only applies to some requests (an existing PR title, a PR template…) is
  * phrased conditionally ("if … is included below") so the instructions stay static text a user can edit.
  */
@@ -94,7 +94,7 @@ export function promptSettingKey(id: AiPromptId): string {
   return `ai.prompts.${id}`;
 }
 
-/** The configured `gitcharm.ai.language`, else VS Code's display language. */
+/** The configured `gitchyan.ai.language`, else VS Code's display language. */
 export function getAiLanguage(cfg: vscode.WorkspaceConfiguration): string {
   const configured: string = cfg.get('ai.language', '');
   return configured.trim() || vscode.env.language || 'en';
@@ -107,7 +107,7 @@ export function getCustomPrompt(cfg: vscode.WorkspaceConfiguration, id: AiPrompt
 }
 
 /** Instructions (custom or default, `{language}` filled in) followed by the caller's context sections. */
-export function buildPrompt(id: AiPromptId, contextSections: Array<string | false | undefined | null>, cfg = vscode.workspace.getConfiguration('gitcharm')): string {
+export function buildPrompt(id: AiPromptId, contextSections: Array<string | false | undefined | null>, cfg = vscode.workspace.getConfiguration('gitchyan')): string {
   const instructions = (getCustomPrompt(cfg, id) ?? DEFAULT_PROMPTS[id]).replace(/\{language\}/g, getAiLanguage(cfg));
   const context = contextSections.filter((s): s is string => !!s).join('\n');
   return `${instructions}\n\n${context}`;

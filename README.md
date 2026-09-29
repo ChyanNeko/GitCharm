@@ -2,7 +2,7 @@
   <img src="media/icons/gitcharm.png" alt="GitCharm" width="160">
 </p>
 
-<h1 align="center">GitCharm</h1>
+<h1 align="center">gitchyan</h1>
 
 <p align="center">
   JetBrains-like Git management for VS Code.
@@ -17,7 +17,7 @@
   <a href="https://github.com/RioNoir/GitCharm/actions/workflows/ci.yml"><img alt="CI" src="https://img.shields.io/github/actions/workflow/status/RioNoir/GitCharm/ci.yml?branch=main&style=flat&logo=github&label=CI"></a>
 </p>
 
-GitCharm brings a JetBrains-like Git workflow to Visual Studio Code: a focused Commit panel, a Git Log panel with graph and branch operations, multi-repository awareness, shelving/stashing tools, push helpers, multi-provider Pull Request management (GitHub, GitLab, Bitbucket Cloud, Gitea/Forgejo), and a 3-way merge editor for conflict resolution.
+gitchyan is a personal fork of [GitCharm](https://github.com/RioNoir/GitCharm). Its extension, commands, views, and settings use separate IDs so it can be installed alongside the original. It keeps GitCharm's JetBrains-like Git workflow for Visual Studio Code: a focused Commit panel, a Git Log panel with graph and branch operations, multi-repository awareness, shelving/stashing tools, push helpers, multi-provider Pull Request management (GitHub, GitLab, Bitbucket Cloud, Gitea/Forgejo), and a 3-way merge editor for conflict resolution.
 
 It activates automatically when the opened workspace contains a Git repository.
 
@@ -233,15 +233,14 @@ GitCharm uses VS Code's built-in Git extension when available and falls back to 
 Build and package the extension:
 
 ```bash
-npm install
-npm run build
+npm ci
 npm run package
 ```
 
 Then install the generated `.vsix`:
 
 ```bash
-code --install-extension gitcharm-0.3.5.vsix
+code --install-extension ./gitchyan-0.6.0.vsix
 ```
 
 ### Development Host

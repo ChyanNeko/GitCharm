@@ -109,8 +109,8 @@ type ReplyTarget = 'sidebar' | 'undocked';
 // Layout preferences live in globalState, one entry per location. In a side bar the
 // filters bar and branch sidebar start hidden, since there is little room for them.
 const LAYOUT_STATE_KEYS: Record<LogViewLocation, string> = {
-  panel: 'gitcharm.logLayout.panel',
-  sideBar: 'gitcharm.logLayout.sideBar',
+  panel: 'gitchyan.logLayout.panel',
+  sideBar: 'gitchyan.logLayout.sideBar',
 };
 const DEFAULT_LAYOUT: LogLayoutByLocation = {
   panel: { filtersHidden: false, sidebarHidden: false },
@@ -118,16 +118,16 @@ const DEFAULT_LAYOUT: LogLayoutByLocation = {
 };
 // Context keys driving the title bar toggles of each surface.
 const LAYOUT_CONTEXT: Record<ReplyTarget, Record<keyof LogLayoutPrefs, string>> = {
-  sidebar: { filtersHidden: 'gitcharm.logFiltersHidden', sidebarHidden: 'gitcharm.logSidebarHidden' },
-  undocked: { filtersHidden: 'gitcharm.undockedLogFiltersHidden', sidebarHidden: 'gitcharm.undockedLogSidebarHidden' },
+  sidebar: { filtersHidden: 'gitchyan.logFiltersHidden', sidebarHidden: 'gitchyan.logSidebarHidden' },
+  undocked: { filtersHidden: 'gitchyan.undockedLogFiltersHidden', sidebarHidden: 'gitchyan.undockedLogSidebarHidden' },
 };
 const FILTERS_ACTIVE_CONTEXT: Record<ReplyTarget, string> = {
-  sidebar: 'gitcharm.logFiltersActive',
-  undocked: 'gitcharm.undockedLogFiltersActive',
+  sidebar: 'gitchyan.logFiltersActive',
+  undocked: 'gitchyan.undockedLogFiltersActive',
 };
 
 export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.Disposable {
-  public static readonly viewType = 'gitcharm.gitLog';
+  public static readonly viewType = 'gitchyan.gitLog';
 
   private view?: vscode.WebviewView;
   private disposables: vscode.Disposable[] = [];
@@ -238,7 +238,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
   /**
    * Open the Git Log where the persisted default says — bottom panel, editor tab
-   * or a separate window. Used by `gitcharm.openLog` (command + keybinding).
+   * or a separate window. Used by `gitchyan.openLog` (command + keybinding).
    */
   openPreferred(): void {
     this.revealPreferred();
@@ -510,7 +510,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
     if (msg.type === 'LOG_INIT_DATA') {
       const m = msg as typeof msg & { hasWorkspaceFolder?: boolean; aiEnabled?: boolean };
       if (m.hasWorkspaceFolder === undefined) m.hasWorkspaceFolder = (vscode.workspace.workspaceFolders?.length ?? 0) > 0;
-      if (m.aiEnabled === undefined) m.aiEnabled = vscode.workspace.getConfiguration('gitcharm').get<boolean>('ai.enabled', true);
+      if (m.aiEnabled === undefined) m.aiEnabled = vscode.workspace.getConfiguration('gitchyan').get<boolean>('ai.enabled', true);
       if (m.activeProfile === undefined) m.activeProfile = this.cachedActiveProfile;
       if (m.layout === undefined) m.layout = this.getLayoutPrefs();
     }
@@ -684,7 +684,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
         // skip + limit. Capping the page size alone let a deep scroll grow the list past
         // the ceiling, and the next refresh — one request covering every loaded row — came
         // back truncated, dropping rows out from under the viewport.
-        const maxCommits = vscode.workspace.getConfiguration('gitcharm').get<number>('graphMaxCommits', 1000);
+        const maxCommits = vscode.workspace.getConfiguration('gitchyan').get<number>('graphMaxCommits', 1000);
         const limit = Math.min(msg.limit, Math.max(0, maxCommits - msg.skip));
 
         // Resolve the icon theme against the webview that asked, so the undocked
@@ -881,7 +881,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
       case 'LOG_SHOW_FILE_HISTORY': {
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) return;
-        await vscode.commands.executeCommand('gitcharm.showFileHistory', vscode.Uri.file(path.join(repo.rootPath, msg.filePath)));
+        await vscode.commands.executeCommand('gitchyan.showFileHistory', vscode.Uri.file(path.join(repo.rootPath, msg.filePath)));
         break;
       }
 
@@ -1172,7 +1172,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
               vscode.l10n.t('Merge conflicts detected. Use the Merge Editor to resolve them.'),
               vscode.l10n.t('Open Commit Panel')
             ).then(choice => {
-              if (choice) vscode.commands.executeCommand('gitcharm.commitPanel.focus');
+              if (choice) vscode.commands.executeCommand('gitchyan.commitPanel.focus');
             });
           } else {
             // The webview only logs this to its console, so the failure is
@@ -2102,7 +2102,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
       }
 
       case 'LOG_SHOW_BRANCH_OPTIONS': {
-        await vscode.commands.executeCommand('gitcharm.showBranchOptions', msg.repoId, msg.branchName);
+        await vscode.commands.executeCommand('gitchyan.showBranchOptions', msg.repoId, msg.branchName);
         break;
       }
 

@@ -111,7 +111,7 @@ async function generateRaw(provider: string, prompt: string, cfg: vscode.Workspa
 
     case 'claude-api': {
       const apiKey: string = cfg.get('ai.claudeApiKey', '');
-      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'Anthropic', 'gitcharm.ai.claudeApiKey'));
+      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'Anthropic', 'gitchyan.ai.claudeApiKey'));
       const model: string = cfg.get('ai.claudeModel', 'claude-sonnet-4-6');
       const res = await fetch('https://api.anthropic.com/v1/messages', {
         method: 'POST',
@@ -143,7 +143,7 @@ async function generateRaw(provider: string, prompt: string, cfg: vscode.Workspa
 
     case 'openai-api': {
       const apiKey: string = cfg.get('ai.openaiApiKey', '');
-      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'OpenAI', 'gitcharm.ai.openaiApiKey'));
+      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'OpenAI', 'gitchyan.ai.openaiApiKey'));
       const model: string = cfg.get('ai.openaiModel', 'gpt-4o');
       return streamChatCompletions('https://api.openai.com/v1/chat/completions', 'OpenAI API', {
         'Content-Type': 'application/json',
@@ -159,7 +159,7 @@ async function generateRaw(provider: string, prompt: string, cfg: vscode.Workspa
 
     case 'gemini-api': {
       const apiKey: string = cfg.get('ai.geminiApiKey', '');
-      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'Gemini', 'gitcharm.ai.geminiApiKey'));
+      if (!apiKey) throw new Error(vscode.l10n.t('{0} API key not set. Configure {1} in settings.', 'Gemini', 'gitchyan.ai.geminiApiKey'));
       const model: string = cfg.get('ai.geminiModel', 'gemini-2.0-flash');
       const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models/${model || 'gemini-2.0-flash'}:streamGenerateContent?alt=sse&key=${apiKey}`, {
         method: 'POST',

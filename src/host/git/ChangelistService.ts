@@ -9,12 +9,6 @@ interface ChangelistsJson {
   changelists: ChangelistData[];
 }
 
-// Shape of a .code-workspace file — used only for legacy migration cleanup
-interface WorkspaceFileJson {
-  gitcharm?: { changelists?: unknown };
-  [key: string]: unknown;
-}
-
 /**
  * Name to show for a changelist. The two fixed changelists can't be renamed, so their stored
  * name is always the English default; translating only at display time keeps the saved file
@@ -40,19 +34,16 @@ export class ChangelistService {
   /**
    * @param workspaceFolderPath  fsPath of the first workspace folder (always provided)
    * @param globalStoragePath    VSCode globalStorageUri.fsPath for per-extension storage
-   * @param workspaceFilePath    fsPath of the .code-workspace file, used only for legacy migration cleanup
    * @param isChangelistMode     whether the current view mode is 'changelists'
    */
   constructor(
     private readonly workspaceFolderPath: string,
     globalStoragePath: string,
-    workspaceFilePath?: string,
     private isChangelistMode: boolean = false,
   ) {
     const repoHash = crypto.createHash('sha1').update(workspaceFolderPath).digest('hex').slice(0, 16);
     this.globalFilePath = path.join(globalStoragePath, 'changelists', repoHash, 'changelists.json');
     this.changelists = this.load();
-    this.cleanLegacyWorkspaceFile(workspaceFilePath);
   }
 
   setChangelistMode(enabled: boolean): void {
@@ -90,21 +81,6 @@ export class ChangelistService {
       fs.writeFileSync(this.globalFilePath, JSON.stringify({ changelists: this.changelists }, null, 2), 'utf8');
     } catch {
       // Non-critical — silently fail
-    }
-  }
-
-  private cleanLegacyWorkspaceFile(workspaceFilePath?: string): void {
-    if (!workspaceFilePath) return;
-    try {
-      if (!fs.existsSync(workspaceFilePath)) return;
-      const raw = fs.readFileSync(workspaceFilePath, 'utf8');
-      const parsed = JSON.parse(raw) as WorkspaceFileJson;
-      if (!parsed.gitcharm?.changelists) return;
-      delete parsed.gitcharm.changelists;
-      if (Object.keys(parsed.gitcharm).length === 0) delete parsed.gitcharm;
-      fs.writeFileSync(workspaceFilePath, JSON.stringify(parsed, null, '\t'), 'utf8');
-    } catch {
-      // Non-critical
     }
   }
 

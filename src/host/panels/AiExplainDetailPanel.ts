@@ -38,7 +38,7 @@ export function openAiExplainDetail(
     panel.reveal(vscode.ViewColumn.Beside);
   } else {
     panel = vscode.window.createWebviewPanel(
-      'gitcharm.aiExplainDetail',
+      'gitchyan.aiExplainDetail',
       vscode.l10n.t('AI Explain — {0}', truncateTitle(subject.title)),
       { viewColumn: vscode.ViewColumn.Beside, preserveFocus: false },
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots: [extensionUri] },

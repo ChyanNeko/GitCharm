@@ -93,7 +93,7 @@ export class CreatePullRequestPanel {
 
     const panelTitle = vscode.l10n.t('New Pull Request — {0}', meta.name);
     const panel = vscode.window.createWebviewPanel(
-      'gitcharm.createPullRequest',
+      'gitchyan.createPullRequest',
       panelTitle,
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots }
@@ -118,7 +118,7 @@ export class CreatePullRequestPanel {
     panel.onDidDispose(() => { this.panels.delete(repoId); this.latestCompareRequestId.delete(repoId); iconThemeWatcher.dispose(); });
     this.panels.set(repoId, panel);
 
-    const cfg = vscode.workspace.getConfiguration('gitcharm');
+    const cfg = vscode.workspace.getConfiguration('gitchyan');
     gate.post({
       type: 'PRCREATE_INIT', repoId, repoName: meta.name, provider: connection.provider,
       aiEnabled: cfg.get('ai.enabled', true), aiModelLabel: getAiModelLabel(cfg),
@@ -268,7 +268,7 @@ export class CreatePullRequestPanel {
     onProgress: (textSoFar: string) => void,
   ): Promise<string> {
     const { field, sourceBranch, targetBranch } = input;
-    const cfg = vscode.workspace.getConfiguration('gitcharm');
+    const cfg = vscode.workspace.getConfiguration('gitchyan');
     const maxDiffChars: number = cfg.get('ai.maxDiffChars', 8000);
     const [baseHash, headHash] = await Promise.all([repo.resolveRef(targetBranch), repo.resolveRef(sourceBranch)]);
     const [messages, rawFiles, diff, template] = await Promise.all([

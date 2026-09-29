@@ -3,7 +3,7 @@
   "submenu.commitPanel.fileView.label": "文件视图",
   "submenu.commitPanel.sortRepos.label": "仓库排序方式",
   "submenu.commitPanel.reposWithoutChanges.label": "仓库视图",
-  "viewsContainer.gitcharm-log.title": "GitCharm 日志",
+  "viewsContainer.gitcharm-log.title": "gitchyan 日志",
   "view.gitLog.name": "Git 日志",
   "command.openLog.title": "聚焦到 Git 日志",
   "command.showOutputLog.title": "显示输出日志",

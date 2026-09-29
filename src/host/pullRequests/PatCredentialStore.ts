@@ -13,7 +13,7 @@ export interface PatAccount {
   label: string;
 }
 
-const ACCOUNTS_INDEX_KEY = 'gitcharm.pullRequests.patAccounts';
+const ACCOUNTS_INDEX_KEY = 'gitchyan.pullRequests.patAccounts';
 
 export class PatCredentialStore {
   constructor(
@@ -22,7 +22,7 @@ export class PatCredentialStore {
   ) {}
 
   private key(provider: ForgeProvider, host: string, accountId: string): string {
-    return `gitcharm.pat.${provider}.${host}.${accountId}`;
+    return `gitchyan.pat.${provider}.${host}.${accountId}`;
   }
 
   private index(): PatAccount[] {

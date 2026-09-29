@@ -67,7 +67,7 @@ export class PullRequestDetailPanel {
     const panelTitle = pr.title ? vscode.l10n.t('PR #{0} - {1}', pr.number, truncateTitle(pr.title)) : vscode.l10n.t('PR #{0}', pr.number);
 
     const panel = vscode.window.createWebviewPanel(
-      'gitcharm.pullRequestDetail',
+      'gitchyan.pullRequestDetail',
       panelTitle,
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: true, localResourceRoots }
@@ -76,7 +76,7 @@ export class PullRequestDetailPanel {
     await this.sendInit(panel, repoId, pr);
   }
 
-  /** Re-hydrates a Pull Request Detail panel restored by VS Code after a window reload/restart — see registerWebviewPanelSerializer('gitcharm.pullRequestDetail', ...) in extension.ts.
+  /** Re-hydrates a Pull Request Detail panel restored by VS Code after a window reload/restart — see registerWebviewPanelSerializer('gitchyan.pullRequestDetail', ...) in extension.ts.
    * Unlike `open()` (which already has the PR summary in memory), a restore only has {repoId, number}
    * persisted via setState — fetching the summary is a network call. The webview/HTML is set up
    * synchronously first (the client shows its own loading skeleton with no PRDETAIL_INIT yet), and
@@ -176,7 +176,7 @@ export class PullRequestDetailPanel {
     panel.title = pr.title ? vscode.l10n.t('PR #{0} - {1}', pr.number, truncateTitle(pr.title)) : vscode.l10n.t('PR #{0}', pr.number);
 
     const currentUsername = await this.pullRequestManager.getCurrentUsername(repoId).catch(() => undefined);
-    const cfg = vscode.workspace.getConfiguration('gitcharm');
+    const cfg = vscode.workspace.getConfiguration('gitchyan');
     const gate = webviewReadyGate<HostToPrDetailMsg>(panel);
     gate.post({
       type: 'PRDETAIL_INIT', repoId, repoName: meta.name, number: pr.number, summary: pr, currentUsername,
@@ -306,7 +306,7 @@ export class PullRequestDetailPanel {
 
       case 'PRDETAIL_EXPLAIN': {
         const { openAiExplainDetail } = await import('./AiExplainDetailPanel');
-        const cfg = vscode.workspace.getConfiguration('gitcharm');
+        const cfg = vscode.workspace.getConfiguration('gitchyan');
         openAiExplainDetail(
           this.extensionUri,
           { key: `pr:${repoId}:${pr.number}`, kind: 'pull-request', title: vscode.l10n.t('PR #{0} — {1}', pr.number, pr.title), subtitle: `${pr.sourceBranch} → ${pr.targetBranch}` },
@@ -648,7 +648,7 @@ export class PullRequestDetailPanel {
    * Returns the result rather than posting it — the caller displays it in the separate AI Explain Detail panel. */
   private async explainPullRequest(repoId: string, pr: PullRequestSummary, onProgress: (explanationSoFar: string) => void): Promise<{ explanation?: string; error?: string }> {
     try {
-      const cfg = vscode.workspace.getConfiguration('gitcharm');
+      const cfg = vscode.workspace.getConfiguration('gitchyan');
       const maxDiffChars: number = cfg.get('ai.maxDiffChars', 8000);
       const detailResult = await this.pullRequestManager.getPullRequestDetail(repoId, pr.number);
       if ('error' in detailResult) {

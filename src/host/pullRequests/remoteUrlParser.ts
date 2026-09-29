@@ -82,7 +82,7 @@ export function parseRemoteUrl(url: string): ParsedRemote | null {
 }
 
 /**
- * Applies a manual per-host override (e.g. from gitcharm.pullRequests.hostProviderOverrides)
+ * Applies a manual per-host override (e.g. from gitchyan.pullRequests.hostProviderOverrides)
  * on top of the host-based heuristic — needed because self-hosted GitLab/Gitea/GHES
  * instances can't be reliably distinguished from a bare hostname.
  */

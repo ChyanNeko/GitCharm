@@ -20,7 +20,7 @@ export function normalizeBranchModel(raw: string): string | undefined {
 
 export function getBranchNameModels(): string[] {
   const value = vscode.workspace
-    .getConfiguration('gitcharm')
+    .getConfiguration('gitchyan')
     .get<string[]>('branchNameModels', DEFAULT_BRANCH_NAME_MODELS);
 
   if (!Array.isArray(value)) return DEFAULT_BRANCH_NAME_MODELS;

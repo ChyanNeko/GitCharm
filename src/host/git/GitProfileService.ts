@@ -15,7 +15,7 @@ export interface EffectiveProfile {
   source: 'active' | 'local' | 'global';
 }
 
-const PROFILES_KEY = 'gitcharm.gitProfiles';
+const PROFILES_KEY = 'gitchyan.gitProfiles';
 const ACTIVE_KEY = 'activeProfileId';
 
 export const LOCAL_PROFILE_ID = '__local__';
@@ -168,63 +168,6 @@ export class GitProfileService implements vscode.Disposable {
     if (global) return { profile: { ...this.makeGlobalPlaceholder(), ...global }, source: 'global' };
 
     return undefined;
-  }
-
-  // ── Migration from old configuration API ─────────────────────────────────────
-
-  async autoInitIfEmpty(): Promise<void> {
-    const hasProfiles = this.getProfiles().length > 0;
-    const hasActive = !!this.context.workspaceState.get<string>(ACTIVE_KEY, '');
-
-    // Migrate legacy profiles from vscode configuration into globalState (runs once)
-    if (!hasProfiles) {
-      const cfg = vscode.workspace.getConfiguration();
-      const fromNew = cfg.get<GitProfile[]>('gitcharm.gitProfiles');
-      const fromOld = cfg.get<GitProfile[]>('gitstorm.gitProfiles');
-      const profiles = (fromNew?.length ? fromNew : fromOld?.length ? fromOld : [])
-        .filter(p => p.id !== LOCAL_PROFILE_ID && p.id !== GLOBAL_PROFILE_ID);
-
-      if (profiles.length > 0) {
-        await this.context.globalState.update(PROFILES_KEY, profiles);
-      }
-
-      if (!hasActive) {
-        const activeNew = cfg.get<string>('gitcharm.activeGitProfileId', '');
-        const activeOld = cfg.get<string>('gitstorm.activeGitProfileId', '');
-        const migratedId = activeNew || activeOld;
-        if (migratedId && profiles.find(p => p.id === migratedId)) {
-          await this.context.workspaceState.update(ACTIVE_KEY, migratedId);
-        }
-      }
-
-      if (profiles.length > 0) {
-        this._onProfileChange.fire();
-      }
-    }
-
-    // Clean up legacy keys from vscode configuration so they no longer appear in
-    // settings.json or .code-workspace files
-    await this.cleanLegacyConfigKeys();
-  }
-
-  private async cleanLegacyConfigKeys(): Promise<void> {
-    const cfg = vscode.workspace.getConfiguration();
-    const legacyKeys = [
-      'gitcharm.activeGitProfileId',
-      'gitstorm.activeGitProfileId',
-      'gitcharm.gitProfiles',
-      'gitstorm.gitProfiles',
-    ];
-    for (const key of legacyKeys) {
-      // Remove from workspace scope (writes to .code-workspace or .vscode/settings.json)
-      if (cfg.inspect(key)?.workspaceValue !== undefined) {
-        await cfg.update(key, undefined, vscode.ConfigurationTarget.Workspace);
-      }
-      // Remove from workspace folder scope
-      if (cfg.inspect(key)?.workspaceFolderValue !== undefined) {
-        await cfg.update(key, undefined, vscode.ConfigurationTarget.WorkspaceFolder);
-      }
-    }
   }
 
   dispose(): void {

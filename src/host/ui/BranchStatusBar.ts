@@ -13,9 +13,9 @@ import { handleDirtyCheckout } from '../utils/dirtyCheckoutHandler';
 import { promptBranchName } from '../utils/branchNamePrompt';
 import { pickRefQuickPick } from '../utils/refPicker';
 
-/** Whether the "gitcharm.showLastCommitInBranchMenu" setting is enabled (off by default). */
+/** Whether the "gitchyan.showLastCommitInBranchMenu" setting is enabled (off by default). */
 function showLastCommitInBranchMenu(): boolean {
-  return vscode.workspace.getConfiguration('gitcharm').get<boolean>('showLastCommitInBranchMenu') === true;
+  return vscode.workspace.getConfiguration('gitchyan').get<boolean>('showLastCommitInBranchMenu') === true;
 }
 
 /** Formats a branch's last commit as "hash  •  author  •  message" for a QuickPick detail line. */
@@ -96,7 +96,7 @@ export class BranchStatusBar implements vscode.Disposable {
       vscode.StatusBarAlignment.Left,
       100
     );
-    this.statusBarItem.command = 'gitcharm.showBranchMenu';
+    this.statusBarItem.command = 'gitchyan.showBranchMenu';
     this.statusBarItem.tooltip = vscode.l10n.t('Git Menu');
     this.statusBarItem.show();
 
@@ -106,7 +106,7 @@ export class BranchStatusBar implements vscode.Disposable {
     // the VS Code Git API state is stable, ensuring the status bar corrects itself.
     this.branchDisposable = this.manager.onBranchChange(() => this.manager.getAllStatusesFresh().then(s => this.refresh(s)));
     this.configDisposable = vscode.workspace.onDidChangeConfiguration(e => {
-      if (e.affectsConfiguration('gitcharm.suppressDivergedBranchWarning')) {
+      if (e.affectsConfiguration('gitchyan.suppressDivergedBranchWarning')) {
         this.refresh();
       }
     });
@@ -175,7 +175,7 @@ export class BranchStatusBar implements vscode.Disposable {
     const anyOnTag = !anyOnNamedBranch && branches.some(b => !!b.detachedTag);
     const headIcon = anyOnNamedBranch ? '$(git-branch)' : anyOnTag ? '$(tag)' : '$(git-commit)';
 
-    const suppressDiverged = vscode.workspace.getConfiguration('gitcharm').get<boolean>('suppressDivergedBranchWarning') === true;
+    const suppressDiverged = vscode.workspace.getConfiguration('gitchyan').get<boolean>('suppressDivergedBranchWarning') === true;
     const divergeIcon = this.branchesDiverged && !suppressDiverged ? '$(warning) ' : '';
     const dirtyDot = this.hasUncommitted ? ' ●' : '';
     const pullPart = this.totalBehind > 0 ? ` $(arrow-down)${this.totalBehind}` : '';
@@ -196,13 +196,13 @@ export class BranchStatusBar implements vscode.Disposable {
       this.statusBarItem.color = undefined;
     } else if (this.hasBehind) {
       this.statusBarItem.backgroundColor = undefined;
-      this.statusBarItem.color = new vscode.ThemeColor('gitcharm.statusBarPullForeground');
+      this.statusBarItem.color = new vscode.ThemeColor('gitchyan.statusBarPullForeground');
     } else if (this.hasUnpushed) {
       this.statusBarItem.backgroundColor = undefined;
-      this.statusBarItem.color = new vscode.ThemeColor('gitcharm.statusBarPushForeground');
+      this.statusBarItem.color = new vscode.ThemeColor('gitchyan.statusBarPushForeground');
     } else if (this.hasUncommitted) {
       this.statusBarItem.backgroundColor = undefined;
-      this.statusBarItem.color = new vscode.ThemeColor('gitcharm.statusBarDirtyForeground');
+      this.statusBarItem.color = new vscode.ThemeColor('gitchyan.statusBarDirtyForeground');
     } else {
       this.statusBarItem.backgroundColor = undefined;
       this.statusBarItem.color = undefined;
@@ -267,7 +267,7 @@ export class BranchStatusBar implements vscode.Disposable {
       items.push({ label: '', kind: vscode.QuickPickItemKind.Separator, action: async () => {} } as unknown as MenuItem);
     }
 
-    const suppressDivergedMenu = vscode.workspace.getConfiguration('gitcharm').get<boolean>('suppressDivergedBranchWarning') === true;
+    const suppressDivergedMenu = vscode.workspace.getConfiguration('gitchyan').get<boolean>('suppressDivergedBranchWarning') === true;
     if (this.branchesDiverged && !suppressDivergedMenu) {
       items.push({
         label: `$(warning)  ${vscode.l10n.t('Branches have diverged')}`,
@@ -302,7 +302,7 @@ export class BranchStatusBar implements vscode.Disposable {
             ? plural(this.totalAhead, vscode.l10n.t('Push commits to remote (1 commit to push, some branches have no upstream)'), vscode.l10n.t('Push commits to remote ({0} commits to push, some branches have no upstream)', this.totalAhead))
             : plural(this.totalAhead, vscode.l10n.t('Push commits to remote (1 commit to push)'), vscode.l10n.t('Push commits to remote ({0} commits to push)', this.totalAhead)))
           : this.hasNoUpstream ? vscode.l10n.t('Some branches have no upstream set') : isSingleRepo ? vscode.l10n.t('Push to remote') : vscode.l10n.t('Push all repositories to remote'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.push'); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.push'); },
       },
       {
         label: `$(repo-force-push) ${isSingleRepo ? vscode.l10n.t('Force Push…') : vscode.l10n.t('Force Push All…')}`,
@@ -346,7 +346,7 @@ export class BranchStatusBar implements vscode.Disposable {
       {
         label: `$(sync) ${isSingleRepo ? vscode.l10n.t('Sync…') : vscode.l10n.t('Sync All…')}`,
         description: isSingleRepo ? vscode.l10n.t('Pull then push') : vscode.l10n.t('Pull then push all repositories'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.syncAll'); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.syncAll'); },
       },
       { label: '', kind: vscode.QuickPickItemKind.Separator, action: async () => {} },
       {
@@ -368,7 +368,7 @@ export class BranchStatusBar implements vscode.Disposable {
       {
         label: `$(history) ${vscode.l10n.t({ message: 'Log', comment: ['Git menu item that opens the Log panel (commit history)'] })}`,
         description: vscode.l10n.t('Open Log panel'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.openLog'); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.openLog'); },
       },
       { label: '', kind: vscode.QuickPickItemKind.Separator, action: async () => {} },
     );
@@ -1036,7 +1036,7 @@ export class BranchStatusBar implements vscode.Disposable {
           logWarn('update-project', `${ok.length} updated, ${failed.length} failed.`, failedDesc);
           notifyWithLogAction('warning', vscode.l10n.t('{0} updated, {1} failed: {2}', ok.length, failed.length, failedDesc));
         }
-        await vscode.commands.executeCommand('gitcharm.openLog');
+        await vscode.commands.executeCommand('gitchyan.openLog');
       }
     );
   }
@@ -1393,27 +1393,27 @@ export class BranchStatusBar implements vscode.Disposable {
       items.push({
         label: `$(repo-sync) ${vscode.l10n.t({ message: 'Update', comment: ['Submodule action: git submodule update'] })}`,
         description: `git submodule update ${meta.submodulePath ?? ''}`,
-        action: async () => { await vscode.commands.executeCommand('gitcharm.submodule.update', meta.id); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.submodule.update', meta.id); },
       });
       items.push({
         label: `$(repo-sync) ${vscode.l10n.t('Update (recursive)')}`,
         description: 'git submodule update --init --recursive',
-        action: async () => { await vscode.commands.executeCommand('gitcharm.submodule.updateRecursive', meta.id); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.submodule.updateRecursive', meta.id); },
       });
       items.push({
         label: `$(add) ${vscode.l10n.t({ message: 'Init', comment: ['Submodule action: git submodule init'] })}`,
         description: vscode.l10n.t('Initialize this submodule'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.submodule.init', meta.id); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.submodule.init', meta.id); },
       });
       items.push({
         label: `$(trash) ${vscode.l10n.t({ message: 'Deinit', comment: ['Submodule action: git submodule deinit'] })}`,
         description: vscode.l10n.t('Deinitialize this submodule'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.submodule.deinit', meta.id); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.submodule.deinit', meta.id); },
       });
       items.push({
         label: `$(link-external) ${vscode.l10n.t('Open in New Window')}`,
         description: vscode.l10n.t('Open submodule folder in a separate VS Code window'),
-        action: async () => { await vscode.commands.executeCommand('gitcharm.submodule.openInNewWindow', meta.id); },
+        action: async () => { await vscode.commands.executeCommand('gitchyan.submodule.openInNewWindow', meta.id); },
       });
     }
 

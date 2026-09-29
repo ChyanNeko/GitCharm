@@ -14,7 +14,7 @@ export async function openEditMessageEditor(
   return new Promise(resolve => {
     const nonce = generateNonce();
     const panel = vscode.window.createWebviewPanel(
-      'gitcharmEditMsg',
+      'gitchyanEditMsg',
       vscode.l10n.t('Edit commit message ({0})', shortHash),
       vscode.ViewColumn.One,
       { enableScripts: true, retainContextWhenHidden: false }
