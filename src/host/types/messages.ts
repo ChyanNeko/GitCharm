@@ -75,6 +75,28 @@ export interface UnpushedCommit {
   deletions?: number;
 }
 
+export interface PushPreviewFile {
+  path: string;
+  status: string;
+  added?: number;
+  removed?: number;
+  oldPath?: string;
+}
+
+export type HostToPushPreviewMsg =
+  | { type: 'PUSH_PREVIEW_INIT'; repoName: string; branchName: string; target: string; publish: boolean; commits: UnpushedCommit[]; files: PushPreviewFile[]; error?: string; fileError?: string }
+  | { type: 'PUSH_PREVIEW_FILES'; requestId: string; hash: string; files: PushPreviewFile[]; error?: string }
+  | { type: 'PUSH_PREVIEW_SQUASH_RESULT'; requestId: string; ok: boolean; cancelled?: boolean; error?: string }
+  | { type: 'PUSH_PREVIEW_RESULT'; requestId: string; ok: boolean; error?: string };
+
+export type PushPreviewToHostMsg =
+  | { type: 'WEBVIEW_READY' }
+  | { type: 'PUSH_PREVIEW_REQUEST_FILES'; requestId: string; hash: string }
+  | { type: 'PUSH_PREVIEW_OPEN_FILE'; hash: string; path: string }
+  | { type: 'PUSH_PREVIEW_SQUASH'; requestId: string; hashes: string[] }
+  | { type: 'PUSH_PREVIEW_CONFIRM'; requestId: string }
+  | { type: 'PUSH_PREVIEW_CANCEL' };
+
 // ─── Commit Panel: Host → WebView ────────────────────────────────────────────
 
 export type HostToCommitMsg =
@@ -100,7 +122,7 @@ export type HostToCommitMsg =
   | { type: 'PUSH_DROP_RESULT'; requestId: string; ok: boolean; error?: string }
   | { type: 'PUSH_REVERT_RESULT'; requestId: string; ok: boolean; error?: string }
   | { type: 'PUSH_EDIT_MSG_RESULT'; requestId: string; ok: boolean; error?: string }
-  | { type: 'COMMIT_SET_MESSAGE'; message: string; ifEmpty?: boolean; ifEquals?: string }
+  | { type: 'COMMIT_SET_MESSAGE'; message: string; ifEmpty?: boolean }
   | { type: 'CHANGELISTS_UPDATE'; changelists: ChangelistData[]; viewMode: 'simplified' | 'changelists' | 'vscode' }
   | { type: 'SUBMODULE_OP_RESULT'; requestId: string; parentRepoId: string; submodulePath: string; op: 'init' | 'deinit' | 'update'; ok: boolean; error?: string }
   | { type: 'SUBMODULE_PUSH_RESULT'; requestId: string; repoId: string; ok: boolean; error?: string }
@@ -139,6 +161,7 @@ export type CommitToHostMsg =
   | { type: 'COMMIT_GET_LAST_COMMIT_MESSAGE'; requestId: string; repoId: string }
   | { type: 'OPEN_PROFILES_MENU' }
   | { type: 'COMMIT_PUSH_REPO'; requestId: string; repoId: string; remote: string; force?: boolean }
+  | { type: 'COMMIT_OPEN_PUSH_PREVIEW'; repoId: string }
   | { type: 'COMMIT_SYNC_AND_PUSH_REPO'; requestId: string; repoId: string; rebase: boolean }
   | { type: 'COMMIT_SYNC_REPOS'; requestId: string; repoIds: string[] }
   | { type: 'COMMIT_DISCARD_FILE'; requestId: string; repoId: string; path: string }

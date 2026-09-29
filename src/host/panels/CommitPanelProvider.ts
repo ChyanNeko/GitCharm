@@ -31,11 +31,11 @@ import type { PatAccount } from '../pullRequests/PatCredentialStore';
 import { resolveAvatarIconPath, resolveGitHubUsernameAvatarIconPath } from '../utils/avatarCache';
 import type { CreatePullRequestPanel } from './CreatePullRequestPanel';
 import type { PullRequestDetailPanel } from './PullRequestDetailPanel';
+import { PushPreviewPanel } from './PushPreviewPanel';
 
 type DivergedStrategy = 'merge' | 'rebase' | 'force';
 
 const COMMIT_MESSAGE_WORKSPACE_KEY = 'gitchyan.commitPanel.draftMessage';
-const COMMIT_SEEDED_WORKSPACE_KEY = 'gitchyan.commitPanel.seededMessage';
 
 /**
  * Asks — in the command bar — how to reconcile branches that have diverged from their
@@ -85,6 +85,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private cachedActiveProfile?: { name: string; gitName: string; gitEmail: string; builtIn?: 'local' | 'global' };
   private createPullRequestPanel?: CreatePullRequestPanel;
   private pullRequestDetailPanel?: PullRequestDetailPanel;
+  private pushPreviewPanel?: PushPreviewPanel;
   private discardInProgress = false;
   private initialSidebarStatusSent = false;
   private lastSidebarStatus: WorkspaceStatus | null = null;
@@ -92,6 +93,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private firstViewResolveLogged = false;
   private lastReconciledStatus: WorkspaceStatus | null = null;
   private lastReconciledMode?: 'simplified' | 'changelists' | 'vscode';
+  private commitMessageWrite: Promise<void> = Promise.resolve();
 
   setLogProvider(provider: GitLogPanelProvider): void {
     this.logProvider = provider;
@@ -132,15 +134,18 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   /**
    * Seeds the commit box with the message git prepared for an in-progress merge,
    * rebase, or squash (or the configured commit.template), matching VS Code's Source
-   * Control input. Only fills an empty box, so a message the user typed is never
-   * clobbered. When that prepared file disappears (merge finished in the terminal),
-   * clears the box if it still holds exactly what we seeded.
+   * Control input. A saved workspace draft takes precedence, and seeded text
+   * remains in the box until the user removes it.
    *
    * Checks every repo for an actual merge/squash message before falling back to any
    * repo's commit.template — otherwise a plain template configured on one repo could
    * preempt a real in-progress merge in another.
    */
   async seedCommitMessage(): Promise<void> {
+    await this.commitMessageWrite.catch(() => {});
+    // An empty saved value means the user deliberately cleared the box.
+    if (this.workspaceState?.get<string>(COMMIT_MESSAGE_WORKSPACE_KEY) !== undefined) return;
+
     const repos = this.manager.getRepoMetas()
       .map(meta => this.manager.getRepo(meta.id))
       .filter((repo): repo is NonNullable<typeof repo> => !!repo);
@@ -148,20 +153,9 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     for (const repo of repos) {
       const message = await repo.getMergeSquashMessage().catch(() => '');
       if (message) {
-        await this.workspaceState?.update(COMMIT_SEEDED_WORKSPACE_KEY, message);
         this.broadcastCommit({ type: 'COMMIT_SET_MESSAGE', message, ifEmpty: true });
         return;
       }
-    }
-
-    const lastSeeded = this.workspaceState?.get<string>(COMMIT_SEEDED_WORKSPACE_KEY, '') ?? '';
-    if (lastSeeded) {
-      this.broadcastCommit({ type: 'COMMIT_SET_MESSAGE', message: '', ifEquals: lastSeeded });
-      const draft = this.workspaceState?.get<string>(COMMIT_MESSAGE_WORKSPACE_KEY, '') ?? '';
-      if (draft.trim() === lastSeeded.trim()) {
-        await this.workspaceState?.update(COMMIT_MESSAGE_WORKSPACE_KEY, undefined);
-      }
-      await this.workspaceState?.update(COMMIT_SEEDED_WORKSPACE_KEY, undefined);
     }
 
     for (const repo of repos) {
@@ -761,7 +755,11 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private async handleMessage(msg: CommitToHostMsg, _webview: vscode.Webview): Promise<void> {
     switch (msg.type) {
       case 'COMMIT_PERSIST_MESSAGE': {
-        await this.workspaceState?.update(COMMIT_MESSAGE_WORKSPACE_KEY, msg.message || undefined);
+        // Serialize writes so an older keystroke cannot finish after a newer one.
+        this.commitMessageWrite = this.commitMessageWrite.catch(() => {}).then(async () => {
+          await this.workspaceState?.update(COMMIT_MESSAGE_WORKSPACE_KEY, msg.message);
+        });
+        await this.commitMessageWrite;
         break;
       }
 
@@ -770,8 +768,13 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
         const undocked = _webview !== this.view?.webview;
         const replyWebview = undocked ? this.undockedPanel?.webview : this.view?.webview;
         this.postViewAndSortSettings();
+        await this.commitMessageWrite.catch(() => {});
         const persistedMessage = this.workspaceState?.get<string>(COMMIT_MESSAGE_WORKSPACE_KEY, '') ?? '';
-        if (persistedMessage) this.post({ type: 'COMMIT_PERSISTED_MESSAGE_RESULT', message: persistedMessage });
+        if (persistedMessage) {
+          const restored: HostToCommitMsg = { type: 'COMMIT_PERSISTED_MESSAGE_RESULT', message: persistedMessage };
+          if (undocked) this.undockedPanel?.postToCommit(restored);
+          else this.view?.webview.postMessage(restored);
+        }
         const initialStatus = msg.initial
           ? await this.manager.getInitialStatusForView()
           : await this.manager.getAllStatuses();
@@ -1083,6 +1086,16 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
           logError('last-commit-msg', formatGitError(e), getRawErrorDetail(e));
           this.post({ type: 'COMMIT_LAST_COMMIT_MESSAGE_RESULT', requestId: msg.requestId, message: '', error: formatGitError(e) });
         }
+        break;
+      }
+
+      case 'COMMIT_OPEN_PUSH_PREVIEW': {
+        this.pushPreviewPanel ??= new PushPreviewPanel(this.extensionUri, this.manager, async () => {
+          const status = await this.manager.getAllStatusesFresh();
+          this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+          this.logProvider?.refresh();
+        });
+        await this.pushPreviewPanel.open(msg.repoId);
         break;
       }
 
@@ -1963,21 +1976,28 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       case 'PUSH_SQUASH_COMMITS': {
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) { logWarn('squash', 'Repo not found'); this.post({ type: 'PUSH_SQUASH_RESULT', requestId: msg.requestId, ok: false, error: vscode.l10n.t('Repo not found') }); return; }
-        const fullMessages = await Promise.all(msg.hashes.map(h => repo.getFullCommitMessage(h).then(m => m.trim())));
-        const fullCombined = fullMessages.join('\n\n');
-        const fullCommits = msg.commits.map((c, i) => ({ ...c, message: fullMessages[i] ?? c.message }));
-        const result = await openSquashEditor(this.extensionUri, msg.hashes.length, fullCombined, fullCommits);
-        if (!result.confirmed) {
-          this.post({ type: 'PUSH_SQUASH_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
-          return;
-        }
         try {
-          await repo.squashCommits(msg.oldestHash, result.message);
+          const orderedHashes = await repo.validateSquashSelection(msg.hashes);
+          const fullMessages = await Promise.all(orderedHashes.map(h => repo.getFullCommitMessage(h).then(m => m.trim())));
+          const fullCombined = fullMessages.join('\n\n');
+          const fullCommits = orderedHashes.map((hash, i) => ({ hash, shortHash: hash.slice(0, 8), message: fullMessages[i] }));
+          const result = await openSquashEditor(this.extensionUri, orderedHashes.length, fullCombined, fullCommits);
+          if (!result.confirmed) {
+            this.post({ type: 'PUSH_SQUASH_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
+            return;
+          }
+          await repo.squashCommits(msg.hashes, result.message);
           this.post({ type: 'PUSH_SQUASH_RESULT', requestId: msg.requestId, ok: true });
           logInfo('squash', `Squashed ${msg.hashes.length} commits in ${msg.repoId}`);
-          const commits = await repo.getUnpushedCommits();
-          this.post({ type: 'PUSH_UNPUSHED_RESULT', requestId: msg.requestId, repoId: msg.repoId, commits });
           this.logProvider?.refresh();
+          try {
+            const commits = await repo.getUnpushedCommits();
+            this.post({ type: 'PUSH_UNPUSHED_RESULT', requestId: msg.requestId, repoId: msg.repoId, commits });
+            const status = await this.manager.getAllStatusesFresh();
+            this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+          } catch (e: unknown) {
+            logError('squash:refresh', formatGitError(e), getRawErrorDetail(e));
+          }
         } catch (e: unknown) {
           this.post({ type: 'PUSH_SQUASH_RESULT', requestId: msg.requestId, ok: false, error: formatGitError(e) });
           showGitError('squash', e);

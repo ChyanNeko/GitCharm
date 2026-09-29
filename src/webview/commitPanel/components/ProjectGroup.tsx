@@ -6,7 +6,8 @@ import { FileTree } from './FileTree';
 import { Codicon } from '../../shared/Codicon';
 import { OpenChangesBtn } from '../../shared/OpenChangesBtn';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
-import { branchColor, tagColor } from '../../shared/branchColors';
+import { RepoSyncActions } from './RepoSyncActions';
+import { BranchSelector } from './BranchSelector';
 import * as l10n from '@vscode/l10n';
 
 interface Props {
@@ -40,6 +41,9 @@ interface Props {
   onBranchClick: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string) => void;
   onOpenAllChanges: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCount: number;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
   ctxFile?: { repoId: string; path: string } | null;
@@ -54,14 +58,11 @@ export function ProjectGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge,
-  onBranchClick, onRepoContextMenu, onOpenAllChanges, iconTheme, activeFolderPath, ctxFile,
+  onBranchClick, onRepoContextMenu, onOpenAllChanges, onPull, onPush, outgoingCount, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const repoId = repoStatus.repoId;
   const collapsed = isCollapsed(repoId);
-  const branchClr = repoStatus.branch.detachedTag
-    ? tagColor()
-    : branchColor(repoStatus.branch.name, false);
 
   const allFiles = useMemo(() => {
     const fileMap = new Map<string, FileStatus>();
@@ -90,7 +91,6 @@ export function ProjectGroup({
   };
 
   const [hovered, setHovered] = useState(false);
-  const [branchHovered, setBranchHovered] = useState(false);
 
   const checkboxRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -130,32 +130,24 @@ export function ProjectGroup({
               {l10n.t({ message: 'SUB', comment: ['Short badge for a git submodule'] })}
             </span>
           )}
-          <span
-            style={styles.branchBadge(branchClr, branchHovered)}
-            onClick={(e) => { e.stopPropagation(); onBranchClick(repoId); }}
-            onMouseEnter={e => { e.stopPropagation(); setBranchHovered(true); }}
-            onMouseLeave={e => { e.stopPropagation(); setBranchHovered(false); }}
-            title={repoStatus.branch.detachedTag ? l10n.t('Tag: {0} (detached HEAD)', repoStatus.branch.detachedTag) : repoStatus.branch.detachedHash ? l10n.t('Detached HEAD at {0}', repoStatus.branch.detachedHash) : repoStatus.branch.name}
-          >
-            <Codicon name={isWorktree ? 'worktree' : repoStatus.branch.detachedTag ? 'tag' : repoStatus.branch.detachedHash ? 'git-commit' : 'git-branch'} style={{ fontSize: '10px', flexShrink: 0, opacity: 0.8 }} />
-            <span style={styles.branchName}>{repoStatus.branch.detachedTag ?? repoStatus.branch.detachedHash ?? repoStatus.branch.name}</span>
-          </span>
-          {totalFiles > 0 && (
-            <div style={styles.rightGroup}>
-              {viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
-                <InlineIconBtn
-                  icon={expanded ? 'collapse-all' : 'expand-all'}
-                  title={expanded ? l10n.t('Collapse') : l10n.t('Expand')}
-                  visible={hovered}
-                  onClick={e => { e.stopPropagation(); setDirsCollapsed(dirKeys, expanded); }}
-                />
-              )}
-              <OpenChangesBtn visible={hovered} onClick={e => { e.stopPropagation(); onOpenAllChanges(repoId); }} />
+          <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
+          <div style={styles.rightGroup}>
+            <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
+            {totalFiles > 0 && viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
+              <InlineIconBtn
+                icon={expanded ? 'collapse-all' : 'expand-all'}
+                title={expanded ? l10n.t('Collapse') : l10n.t('Expand')}
+                visible={hovered}
+                onClick={e => { e.stopPropagation(); setDirsCollapsed(dirKeys, expanded); }}
+              />
+            )}
+            {totalFiles > 0 && <OpenChangesBtn visible={hovered} onClick={e => { e.stopPropagation(); onOpenAllChanges(repoId); }} />}
+            {totalFiles > 0 && (
               <span style={styles.countBadge(selectedCount > 0)}>
                 {selectedCount}/{totalFiles}
               </span>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
@@ -205,14 +197,14 @@ interface SingleRepoHeaderProps {
   onBranchClick: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string) => void;
   onOpenAllChanges: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCount: number;
   hideOpenChanges?: boolean;
 }
 
-export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onBranchClick, onRepoContextMenu, onOpenAllChanges, hideOpenChanges }: SingleRepoHeaderProps) {
+export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onBranchClick, onRepoContextMenu, onOpenAllChanges, onPull, onPush, outgoingCount, hideOpenChanges }: SingleRepoHeaderProps) {
   const repoId = repoStatus.repoId;
-  const branchClr = repoStatus.branch.detachedTag
-    ? tagColor()
-    : branchColor(repoStatus.branch.name, false);
   const [hovered, setHovered] = useState(false);
 
   return (
@@ -232,19 +224,11 @@ export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule,
             {l10n.t({ message: 'SUB', comment: ['Short badge for a git submodule'] })}
           </span>
         )}
-        <span
-          style={styles.branchBadge(branchClr)}
-          onClick={e => { e.stopPropagation(); onBranchClick(repoId); }}
-          title={repoStatus.branch.detachedTag ? l10n.t('Tag: {0} (detached HEAD)', repoStatus.branch.detachedTag) : repoStatus.branch.detachedHash ? l10n.t('Detached HEAD at {0}', repoStatus.branch.detachedHash) : repoStatus.branch.name}
-        >
-          <Codicon name={isWorktree ? 'worktree' : repoStatus.branch.detachedTag ? 'tag' : repoStatus.branch.detachedHash ? 'git-commit' : 'git-branch'} style={{ fontSize: '10px', flexShrink: 0, opacity: 0.8 }} />
-          <span style={styles.branchName}>{repoStatus.branch.detachedTag ?? repoStatus.branch.detachedHash ?? repoStatus.branch.name}</span>
-        </span>
-        {!hideOpenChanges && (
-          <div style={styles.rightGroup}>
-            <OpenChangesBtn visible={hovered} onClick={e => { e.stopPropagation(); onOpenAllChanges(repoId); }} />
-          </div>
-        )}
+        <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
+        <div style={styles.rightGroup}>
+          <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
+          {!hideOpenChanges && <OpenChangesBtn visible={hovered} onClick={e => { e.stopPropagation(); onOpenAllChanges(repoId); }} />}
+        </div>
       </div>
     </div>
   );
@@ -320,33 +304,6 @@ const styles = {
     padding: '1px 4px',
     flexShrink: 0,
     opacity: 0.75,
-  } as React.CSSProperties,
-  /** `hovered` mirrors the Log panel's "selected row" badge look — solid background instead of the usual 20%-tint. */
-  branchBadge: (color: string, hovered = false): React.CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '10px',
-    fontWeight: 600,
-    textTransform: 'none' as const,
-    letterSpacing: 0,
-    background: hovered ? color : `${color}33`,
-    color: hovered ? 'var(--vscode-editor-background)' : color,
-    border: `1px solid ${hovered ? color : `${color}88`}`,
-    borderRadius: '3px',
-    padding: '1px 5px',
-    flexShrink: 1,
-    minWidth: '0',
-    maxWidth: '160px',
-    marginLeft: '4px',
-    cursor: 'pointer',
-    overflow: 'hidden',
-  }),
-  branchName: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    minWidth: 0,
   } as React.CSSProperties,
   rightGroup: {
     display: 'flex',

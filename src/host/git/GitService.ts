@@ -1947,9 +1947,40 @@ export class GitService {
     await this.git.raw(['rebase', '--onto', `${hash}^`, hash]);
   }
 
-  async squashCommits(oldestHash: string, message: string): Promise<void> {
+  /** Only rewrite a clean, unpublished, linear prefix of HEAD. */
+  async validateSquashSelection(hashes: string[]): Promise<string[]> {
+    if (hashes.length < 2 || new Set(hashes).size !== hashes.length) {
+      throw new Error(vscode.l10n.t('Select at least two consecutive commits from HEAD to squash.'));
+    }
+    const [branch, dirty, history] = await Promise.all([
+      this.git.raw(['symbolic-ref', '-q', '--short', 'HEAD']).catch(() => ''),
+      this.git.raw(['status', '--porcelain', '-z']),
+      this.git.raw(['rev-list', '--parents', `--max-count=${hashes.length}`, 'HEAD']),
+    ]);
+    if (!branch.trim()) throw new Error(vscode.l10n.t('Checkout a branch before squashing commits.'));
+    if (dirty) throw new Error(vscode.l10n.t('Commit or stash working tree changes before squashing commits.'));
+    const rows = history.trim().split('\n').map(row => row.split(' '));
+    const selected = new Set(hashes);
+    if (rows.length !== hashes.length || rows.some(row => row.length !== 2 || !selected.has(row[0]))) {
+      throw new Error(vscode.l10n.t('Select consecutive commits starting at HEAD; merge commits cannot be squashed here.'));
+    }
+    const oldestHash = rows[rows.length - 1][0];
+    const remoteRefs = await this.git.raw(['for-each-ref', '--contains', oldestHash, '--format=%(refname)', 'refs/remotes']);
+    if (remoteRefs.trim()) throw new Error(vscode.l10n.t('Published commits cannot be squashed here.'));
+    return rows.map(row => row[0]);
+  }
+
+  async squashCommits(hashes: string[], message: string): Promise<void> {
+    const orderedHashes = await this.validateSquashSelection(hashes);
+    const oldestHash = orderedHashes[orderedHashes.length - 1];
+    const originalHead = await this.git.revparse(['HEAD']);
     await this.git.raw(['reset', '--soft', `${oldestHash}^`]);
-    await this.git.raw(['commit', '-m', message]);
+    try {
+      await this.git.raw(['commit', '-m', message]);
+    } catch (error) {
+      await this.git.raw(['reset', '--soft', originalHead]).catch(() => {});
+      throw error;
+    }
   }
 
   async cherryPickMulti(hashes: string[]): Promise<void> {

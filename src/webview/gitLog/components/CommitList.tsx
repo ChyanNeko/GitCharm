@@ -227,6 +227,7 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
   const popoverHoveredRef = useRef(false);
   const closePopoverTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const clickTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const selectionAnchorRef = useRef<string | null>(null);
   const [multiSelectHashes, setMultiSelectHashes] = useState<Set<string>>(new Set());
   const multiSelectedCommits = useMemo(
     () => commits.filter(c => multiSelectHashes.has(`${c.hash}:${c.repoId}`)),
@@ -555,6 +556,7 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
             <div
               key={commit.hash}
               style={{ ...styles.row(vrow.start, isSelected, isMultiSelected, hoveredIndex === vrow.index, !isSelected && contextMenu?.commit.hash === commit.hash && contextMenu?.commit.repoId === commit.repoId), paddingLeft: textStart }}
+              onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
               onMouseEnter={(e) => {
                 if (isHoverSuppressed()) return;
                 setHoveredIndex(vrow.index);
@@ -595,10 +597,24 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
                 // an ancestor tabIndex on its own — grab it explicitly so arrow-key nav works
                 // immediately after clicking a commit, not just after clicking empty space.
                 parentRef.current?.focus();
-                if (e.ctrlKey || e.metaKey) {
+                const key = `${commit.hash}:${commit.repoId}`;
+                if (e.shiftKey) {
+                  if (clickTimerRef.current) { clearTimeout(clickTimerRef.current); clickTimerRef.current = null; }
+                  const anchorIndex = commits.findIndex(c => `${c.hash}:${c.repoId}` === (selectionAnchorRef.current ?? selectedHash));
+                  const clickedIndex = vrow.index;
+                  const range = anchorIndex >= 0
+                    ? commits.slice(Math.min(anchorIndex, clickedIndex), Math.max(anchorIndex, clickedIndex) + 1)
+                    : [commit];
+                  if (range.every(c => c.repoId === commit.repoId && !!c.isStash === !!commit.isStash)) {
+                    setMultiSelectHashes(new Set(range.map(c => `${c.hash}:${c.repoId}`)));
+                  } else {
+                    setMultiSelectHashes(new Set([key]));
+                    selectionAnchorRef.current = key;
+                  }
+                } else if (e.ctrlKey || e.metaKey) {
+                  selectionAnchorRef.current = key;
                   setMultiSelectHashes(prev => {
                     const next = new Set(prev);
-                    const key = `${commit.hash}:${commit.repoId}`;
                     // If starting a new multi-select, auto-include the currently single-selected commit
                     if (next.size === 0 && selectedHash && selectedHash !== key) {
                       // Find selected commit to check stash type and repo compatibility
@@ -618,6 +634,7 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
                     return next;
                   });
                 } else {
+                  selectionAnchorRef.current = key;
                   setMultiSelectHashes(new Set());
                   // Defer: a double-click fires this same onClick twice before onDoubleClick
                   // — selecting/toggling on every click would flash the detail pane open and
@@ -645,7 +662,10 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
                 const multiSelected = isInMulti
                   ? commits.filter(c => multiSelectHashes.has(`${c.hash}:${c.repoId}`))
                   : [];
-                if (!isInMulti) setMultiSelectHashes(new Set());
+                if (!isInMulti) {
+                  setMultiSelectHashes(new Set());
+                  selectionAnchorRef.current = key;
+                }
                 setContextMenu({ commit, x: e.clientX, y: e.clientY, multiSelected });
               }}
             >
@@ -1176,6 +1196,19 @@ function CommitContextMenu({ commit, x, y, multiSelected, allCommits, currentBra
   const isMulti = multiSelected.length > 1 && multiSelected.every(c => c.repoId === multiSelected[0].repoId);
   const allUnpushed = isMulti && multiSelected.every(c => c.unpushed);
   const isHead = headHashByRepo[commit.repoId] === commit.hash;
+  const squashChain: LaidOutCommit[] = [];
+  if (allUnpushed) {
+    const byHash = new Map(allCommits.filter(c => c.repoId === commit.repoId).map(c => [c.hash, c]));
+    const selected = new Set(multiSelected.map(c => c.hash));
+    let hash = headHashByRepo[commit.repoId];
+    while (hash && squashChain.length < selected.size) {
+      const current = byHash.get(hash);
+      if (!current || current.parents.length !== 1 || !selected.has(hash)) break;
+      squashChain.push(current);
+      hash = current.parents[0];
+    }
+  }
+  const canSquash = allUnpushed && squashChain.length === multiSelected.length;
 
   function send(msg: LogToHostMsg) {
     getVsCodeApi().postMessage(msg);
@@ -1239,7 +1272,7 @@ function CommitContextMenu({ commit, x, y, multiSelected, allCommits, currentBra
                     <Codicon name="trash" style={ctxStyles.icon} />
                     <span>{l10n.t('Drop Commits')}</span>
                   </div>
-                  <div data-ctx-item="" style={ctxStyles.item} onClick={() => onSquash(multiSelected)}>
+                  <div data-ctx-item={canSquash ? '' : undefined} style={canSquash ? ctxStyles.item : ctxStyles.itemDisabled} title={canSquash ? undefined : l10n.t('Select consecutive commits starting at HEAD to squash.')} onClick={canSquash ? () => onSquash(squashChain) : undefined}>
                     <Codicon name="fold-down" style={ctxStyles.icon} />
                     <span>{plural(multiSelected.length, l10n.t('Squash 1 Commit...'), l10n.t('Squash {0} Commits...', multiSelected.length))}</span>
                   </div>

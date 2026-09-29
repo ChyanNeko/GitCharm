@@ -2,6 +2,18 @@
 
 All notable changes to GitCharm are documented in this file.
 
+## Unreleased
+
+### ✨ New Features
+- Select consecutive outgoing commits with Shift-click in the Push Preview, Push tab, or Git Log, then right-click to squash them in an editable commit-message panel.
+- Preview one repository's outgoing commits and changed files in an editor tab before confirming Push; multi-repository actions open the Push tab for review.
+- Pull and push a single repository from hover actions on its row in the Changes view.
+- Show a green outgoing arrow beside a branch with commits to push in the Changes header, with a dropdown chevron for the branch picker.
+
+### 🐛 Bug Fixes
+- Repositories with only unversioned files remain visible in the Changes list while their files stay in Unversioned Files.
+- Commit messages remain after a successful commit and are saved per VS Code workspace until the user clears them, including after reopening the panel.
+
 ## v0.6.0
 
 Release bringing everything from the v0.5.0 and v0.5.1 pre-releases.

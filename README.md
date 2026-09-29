@@ -78,6 +78,8 @@ When there is nothing left to commit, the primary button turns into the remote a
 
 ### 🚀 Push Tab
 
+- A single-repository Push action opens a wide editor-tab preview of outgoing commits and changed files; the footer Push button performs the push.
+- Shift-click consecutive commits in the preview or Push tab, then right-click and choose **Squash** to edit the combined commit message before confirming.
 - Lists unpushed commits for every repository, including branches without an upstream tracking branch.
 - Commit count badge on the tab label, auto-updated after each commit, undo, or push.
 - File count badge on the Changes tab label showing the total number of modified files.
@@ -133,6 +135,7 @@ When there is nothing left to commit, the primary button turns into the remote a
 
 ### 📜 Git Log Panel
 
+- Shift-click a range of commits and right-click to squash a consecutive, unpublished prefix of HEAD; the squash editor lets you revise the resulting message. The working tree must be clean.
 - Commit graph with branch visualization.
 - Branch sidebar: local branches, remote branches, tags; single-repo workspaces hide the repository list; sidebar is collapsible.
 - Filters by text, author, branch, date, and repository; filter bar redesigned with compact controls.
@@ -364,6 +367,7 @@ src/host/ui/              Status bar controllers, badge controller, and annotati
 src/webview/commitPanel/  React Commit panel
 src/webview/gitLog/       React Git Log panel
 src/webview/commitFullDetail/ React commit "Full Detail" editor-tab panel
+src/webview/pushPreview/    React push preview editor-tab panel
 src/webview/undockedPanel/ React undocked panel (Commit + Log side by side)
 src/webview/pullRequestCreate/ React Create Pull Request panel
 src/webview/pullRequestDetail/ React Pull Request detail panel

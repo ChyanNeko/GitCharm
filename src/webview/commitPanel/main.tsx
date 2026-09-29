@@ -299,25 +299,19 @@ function App() {
 
   // Track unstaged file counts per repo to detect new changes for auto-expand in vscode mode
   const prevUnstagedCountsRef = useRef<Map<string, number>>(new Map());
-  // The in-flight commit, so its message is only cleared once the commit succeeded.
+  // The in-flight commit, so only repos that committed successfully reset amend.
   const pendingCommitRef = useRef<{ requestId: string; repoIds: string[] } | null>(null);
+  const messageEditedRef = useRef(false);
 
-  // Persist the commit message draft to workspaceState (host-side), debounced so typing
-  // doesn't post a message per keystroke. Scoped per-workspace by the host, unlike the
-  // webview's shared-origin localStorage.
+  // Persist each edit to workspaceState. Do not write the initial empty value: the
+  // saved draft may still be on its way from the host when this view mounts.
   useEffect(() => {
-    let timer: ReturnType<typeof setTimeout> | undefined;
-    const persist = (message: string) => {
-      if (timer) clearTimeout(timer);
-      timer = setTimeout(() => {
-        getVsCodeApi().postMessage({ type: 'COMMIT_PERSIST_MESSAGE', message } satisfies CommitToHostMsg);
-      }, 400);
-    };
-    persist(useCommitStore.getState().commitMessage);
     const unsubscribe = useCommitStore.subscribe((next, previous) => {
-      if (next.commitMessage !== previous.commitMessage) persist(next.commitMessage);
+      if (next.commitMessage !== previous.commitMessage) {
+        getVsCodeApi().postMessage({ type: 'COMMIT_PERSIST_MESSAGE', message: next.commitMessage } satisfies CommitToHostMsg);
+      }
     });
-    return () => { unsubscribe(); if (timer) clearTimeout(timer); };
+    return unsubscribe;
   }, []);
 
   // ── Vscode mode: repo selection for commit ───────────────────────────────
@@ -551,11 +545,9 @@ function App() {
           if (pendingCommitRef.current?.requestId === msg.requestId) {
             const { repoIds } = pendingCommitRef.current;
             pendingCommitRef.current = null;
-            // Only repos that actually committed consume the message/amend flag — a
-            // rejecting hook or missing identity in one repo of a multi-repo commit
-            // must not cost the user what they typed for the repos that did succeed.
+            // Only repos that actually committed reset amend. Keep the commit
+            // message available for the next commit, including after partial success.
             if (msg.ok) {
-              store.setCommitMessage('');
               repoIds.forEach(id => store.clearAmend(id));
             } else if (msg.succeededRepoIds?.length) {
               msg.succeededRepoIds.forEach(id => store.clearAmend(id));
@@ -588,12 +580,11 @@ function App() {
           }
           break;
         case 'COMMIT_SET_MESSAGE':
-          if (msg.ifEmpty && useCommitStore.getState().commitMessage.trim()) break;
-          if (msg.ifEquals !== undefined && useCommitStore.getState().commitMessage.trim() !== msg.ifEquals.trim()) break;
+          if (msg.ifEmpty && (messageEditedRef.current || useCommitStore.getState().commitMessage.length > 0)) break;
           store.setCommitMessage(msg.message);
           break;
         case 'COMMIT_PERSISTED_MESSAGE_RESULT':
-          if (!useCommitStore.getState().commitMessage.trim()) store.setCommitMessage(msg.message);
+          if (!messageEditedRef.current && useCommitStore.getState().commitMessage.length === 0) store.setCommitMessage(msg.message);
           break;
         case 'SHELVE_LIST_RESULT':
           setShelveLoading(prev => ({ ...prev, [msg.repoId]: false }));
@@ -929,6 +920,12 @@ function App() {
   const singleRepo = repos.length === 1;
   const changesMultiRepo = changesRepos.length >= 1;
   const changesSingleRepo = changesRepos.length === 1;
+  const outgoingCounts = useMemo(() => Object.fromEntries(repos.map(r => [
+    r.repoId,
+    r.isDetachedHead ? 0 : r.branch.upstream
+      ? (r.branch.aheadBehind?.ahead ?? 0)
+      : (unpushedMap[r.repoId]?.commits.length ?? 0),
+  ])), [repos, unpushedMap]);
 
   // Keep unpushed-commit counts fresh for repos without upstream so the Push tab badge
   // shows the correct number even before the tab is opened. Upstream repos are live via aheadBehind.ahead.
@@ -1146,6 +1143,24 @@ function App() {
     send({ type: 'COMMIT_PUSH_REPO', requestId: generateId(), repoId, remote });
   };
 
+  const openPushPreview = (repoId: string) => {
+    send({ type: 'COMMIT_OPEN_PUSH_PREVIEW', repoId } satisfies CommitToHostMsg);
+  };
+
+  const openPushTab = (repoIds: string[]) => {
+    const targets = new Set(repoIds);
+    for (const repo of useCommitStore.getState().status?.repos ?? []) {
+      useCommitStore.getState().setPushSelection(repo.repoId, targets.has(repo.repoId));
+    }
+    setActiveTab('push');
+    repoIds.forEach(requestUnpushedCommits);
+  };
+
+  const reviewPushTargets = (repoIds: string[]) => {
+    if (repoIds.length === 1) openPushPreview(repoIds[0]);
+    else if (repoIds.length > 1) openPushTab(repoIds);
+  };
+
   const doForcePush = (repoId: string) => {
     const remote = useCommitStore.getState().getRepoStatus(repoId)?.branch.remoteName ?? 'origin';
     send({ type: 'COMMIT_PUSH_REPO', requestId: generateId(), repoId, remote, force: true });
@@ -1193,12 +1208,7 @@ function App() {
 
   const doPushAll = () => {
     const allRepos = useCommitStore.getState().status?.repos ?? [];
-    for (const r of allRepos) {
-      if ((r.branch.aheadBehind?.ahead ?? 0) > 0) {
-        const remote = r.branch.remoteName ?? 'origin';
-        send({ type: 'COMMIT_PUSH_REPO', requestId: generateId(), repoId: r.repoId, remote });
-      }
-    }
+    openPushTab(allRepos.map(r => r.repoId));
   };
 
   const doSyncAndPush = (repoId: string) => {
@@ -1209,20 +1219,21 @@ function App() {
     send({ type: 'COMMIT_PULL_REPO', requestId: generateId(), repoId });
   };
 
-  // Commit-tab publish/sync button. Publish and the explicit dropdown entries map straight
-  // onto push/pull; 'sync' goes to the host, which works out whether a plain pull is enough
-  // or the divergence needs a rebase/force decision from the user.
+  // Commit-tab push actions open a review surface. The Push tab handles publishing,
+  // multiple repositories and sync options; a single ordinary push gets a wide preview.
   const doSyncAction = (action: SyncAction, repoIds: string[]) => {
     switch (action) {
       case 'publish':
+        openPushTab(repoIds);
+        break;
       case 'push':
-        repoIds.forEach(doPush);
+        reviewPushTargets(repoIds);
         break;
       case 'pull':
         repoIds.forEach(doPull);
         break;
       case 'sync':
-        send({ type: 'COMMIT_SYNC_REPOS', requestId: generateId(), repoIds } satisfies CommitToHostMsg);
+        openPushTab(repoIds);
         break;
       case 'none':
         break;
@@ -1572,6 +1583,9 @@ function App() {
                 onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
                 onOpenStagedChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid, section: 'staged' })}
                 onOpenUnstagedChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid, section: 'unstaged' })}
+                onPull={doPull}
+                onPush={openPushPreview}
+                outgoingCounts={outgoingCounts}
                 iconTheme={store.iconTheme}
                 activeFolderPath={activeFolderPath}
                 selectedRepos={vscodeSelectedRepos}
@@ -1627,6 +1641,9 @@ function App() {
                 onRepoContextMenu={(e, rid, clId) => setRepoCtxMenu({ x: e.clientX, y: e.clientY, repoId: rid, changelistId: clId })}
                 onOpenChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid } satisfies CommitToHostMsg)}
                 onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
+                onPull={doPull}
+                onPush={openPushPreview}
+                outgoingCounts={outgoingCounts}
                 iconTheme={store.iconTheme}
                 activeFolderPath={activeFolderPath}
                 ctxFile={ctxFile}
@@ -1718,6 +1735,9 @@ function App() {
                       onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
                       onRepoContextMenu={(e, rid) => setRepoCtxMenu({ x: e.clientX, y: e.clientY, repoId: rid })}
                       onOpenAllChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid } satisfies CommitToHostMsg)}
+                      onPull={doPull}
+                      onPush={openPushPreview}
+                      outgoingCount={outgoingCounts[repoId] ?? 0}
                       iconTheme={store.iconTheme}
                       activeFolderPath={activeFolderPath}
                       ctxFile={ctxFile}
@@ -1782,7 +1802,7 @@ function App() {
                 store.setFileSelections(repoId, allPaths, false);
               }
             }}
-            onMessageChange={msg => store.setCommitMessage(msg)}
+            onMessageChange={msg => { messageEditedRef.current = true; store.setCommitMessage(msg); }}
             onAmendToggle={repoId => {
               const newValue = !(store.amendFlags[repoId] ?? false);
               store.setAmend(repoId, newValue);
@@ -1792,13 +1812,13 @@ function App() {
             }}
             onCommit={() => doCommit(false)}
             onCommitAndPush={() => doCommit(true)}
-            onPush={doPush}
+            onPush={openPushPreview}
             onPushAll={doPushAll}
             syncRepoStatuses={repos}
             onSyncAction={doSyncAction}
             onPullRepos={ids => ids.forEach(doPull)}
-            onPushRepos={ids => ids.forEach(doPush)}
-            onForcePushRepos={ids => ids.forEach(doForcePush)}
+            onPushRepos={reviewPushTargets}
+            onForcePushRepos={openPushTab}
             aiEnabled={store.aiEnabled}
             onAutopilot={doAutopilot}
             onAutopilotContextMenu={doAutopilotContextMenu}

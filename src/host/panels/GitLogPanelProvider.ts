@@ -1682,16 +1682,17 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
       case 'LOG_SQUASH_COMMITS': {
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) { post({ type: 'LOG_BRANCH_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Repo not found' }); return; }
-        const fullMessages = await Promise.all(msg.hashes.map(h => repo.getFullCommitMessage(h).then(m => m.trim())));
-        const fullCombined = fullMessages.join('\n\n');
-        const fullCommits = msg.commits.map((c, i) => ({ ...c, message: fullMessages[i] ?? c.message }));
-        const result = await openSquashEditor(this.extensionUri, msg.hashes.length, fullCombined, fullCommits);
-        if (!result.confirmed) {
-          post({ type: 'LOG_BRANCH_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
-          return;
-        }
         try {
-          await repo.squashCommits(msg.oldestHash, result.message);
+          const orderedHashes = await repo.validateSquashSelection(msg.hashes);
+          const fullMessages = await Promise.all(orderedHashes.map(h => repo.getFullCommitMessage(h).then(m => m.trim())));
+          const fullCombined = fullMessages.join('\n\n');
+          const fullCommits = orderedHashes.map((hash, i) => ({ hash, shortHash: hash.slice(0, 8), message: fullMessages[i] }));
+          const result = await openSquashEditor(this.extensionUri, orderedHashes.length, fullCombined, fullCommits);
+          if (!result.confirmed) {
+            post({ type: 'LOG_BRANCH_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
+            return;
+          }
+          await repo.squashCommits(msg.hashes, result.message);
           post({ type: 'LOG_BRANCH_OP_RESULT', requestId: msg.requestId, ok: true });
           post({ type: 'LOG_REFRESH' });
         } catch (e: unknown) {

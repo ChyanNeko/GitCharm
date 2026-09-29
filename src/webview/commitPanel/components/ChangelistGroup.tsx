@@ -7,7 +7,8 @@ import { FileTree } from './FileTree';
 import { Codicon } from '../../shared/Codicon';
 import { OpenChangesBtn } from '../../shared/OpenChangesBtn';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
-import { branchColor, tagColor } from '../../shared/branchColors';
+import { RepoSyncActions } from './RepoSyncActions';
+import { BranchSelector } from './BranchSelector';
 import * as l10n from '@vscode/l10n';
 
 export interface RepoFileGroup {
@@ -49,6 +50,9 @@ interface Props {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCounts: Record<string, number>;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
   ctxFile?: { repoId: string; path: string } | null;
@@ -62,7 +66,7 @@ export function ChangelistGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, ctxFile,
+  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const collapseKey = `cl:${changelist.id}`;
@@ -159,6 +163,9 @@ export function ChangelistGroup({
                 onRepoContextMenu={onRepoContextMenu}
                 onOpenChanges={onOpenChanges}
                 onBranchClick={onBranchClick}
+                onPull={onPull}
+                onPush={onPush}
+                outgoingCount={outgoingCounts[group.repoId] ?? 0}
                 iconTheme={iconTheme}
                 activeFolderPath={activeFolderPath}
                 changelistId={changelist.id}
@@ -206,6 +213,9 @@ interface RepoSubGroupProps {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCount: number;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
   changelistId?: string;
@@ -224,7 +234,7 @@ function RepoSubGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, changelistId, ctxFile, isFirst = false, isLast = false, defaultCollapsed = false,
+  onOpenFile, onRollback, onResolveMerge, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCount, iconTheme, activeFolderPath, changelistId, ctxFile, isFirst = false, isLast = false, defaultCollapsed = false,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: RepoSubGroupProps) {
   const collapseKey = `cl-repo:${changelistId ?? ''}:${repoId}`;
@@ -244,11 +254,7 @@ function RepoSubGroup({
   const allSelected = totalFiles > 0 && selectedCount === totalFiles;
   const someSelected = selectedCount > 0 && !allSelected;
 
-  const branchClr = repoStatus
-    ? (repoStatus.branch.detachedTag ? tagColor() : branchColor(repoStatus.branch.name, false))
-    : branchColor('main', true);
   const [hovered, setHovered] = useState(false);
-  const [branchHovered, setBranchHovered] = useState(false);
 
   const checkboxRef = useRef<HTMLInputElement>(null);
   useEffect(() => {
@@ -289,23 +295,10 @@ function RepoSubGroup({
               <span style={styles.submoduleBadge} title={submodulePath ? l10n.t('Submodule: {0}', submodulePath) : l10n.t('Submodule')}>{l10n.t({ message: 'SUB', comment: ['Short badge for a git submodule'] })}</span>
             )}
             {repoStatus && (
-              <span
-                style={styles.branchBadge(branchClr, branchHovered)}
-                onClick={e => { e.stopPropagation(); onBranchClick(repoId); }}
-                onMouseEnter={e => { e.stopPropagation(); setBranchHovered(true); }}
-                onMouseLeave={e => { e.stopPropagation(); setBranchHovered(false); }}
-                title={repoStatus.branch.detachedTag ? l10n.t('Tag: {0} (detached HEAD)', repoStatus.branch.detachedTag) : repoStatus.branch.detachedHash ? l10n.t('Detached HEAD at {0}', repoStatus.branch.detachedHash) : repoStatus.branch.name}
-              >
-                <Codicon
-                  name={isWorktree ? 'worktree' : repoStatus.branch.detachedTag ? 'tag' : repoStatus.branch.detachedHash ? 'git-commit' : 'git-branch'}
-                  style={{ fontSize: '10px', flexShrink: 0, opacity: 0.8 }}
-                />
-                <span style={styles.branchName}>
-                  {repoStatus.branch.detachedTag ?? repoStatus.branch.detachedHash ?? repoStatus.branch.name}
-                </span>
-              </span>
+              <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
             )}
             <div style={styles.repoRightGroup}>
+              <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
               {viewMode === 'tree' && totalFiles > 0 && !collapsed && dirKeys.length > 0 && (
                 <InlineIconBtn
                   icon={expanded ? 'collapse-all' : 'expand-all'}
@@ -502,33 +495,6 @@ const styles = {
     whiteSpace: 'nowrap' as const,
     flexShrink: 10,
     minWidth: '20px',
-  } as React.CSSProperties,
-  /** `hovered` mirrors the Log panel's "selected row" badge look — solid background instead of the usual 20%-tint. */
-  branchBadge: (color: string, hovered = false): React.CSSProperties => ({
-    display: 'inline-flex',
-    alignItems: 'center',
-    gap: '3px',
-    fontSize: '10px',
-    fontWeight: 600,
-    textTransform: 'none' as const,
-    letterSpacing: 0,
-    background: hovered ? color : `${color}33`,
-    color: hovered ? 'var(--vscode-editor-background)' : color,
-    border: `1px solid ${hovered ? color : `${color}88`}`,
-    borderRadius: '3px',
-    padding: '1px 5px',
-    flexShrink: 1,
-    minWidth: '0',
-    maxWidth: '160px',
-    marginLeft: '4px',
-    cursor: 'pointer',
-    overflow: 'hidden',
-  }),
-  branchName: {
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
-    minWidth: 0,
   } as React.CSSProperties,
   repoRightGroup: {
     display: 'flex',

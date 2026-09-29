@@ -5,7 +5,8 @@ import type { IconThemeData } from '../../../host/types/messages';
 import { Codicon } from '../../shared/Codicon';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
 import { SingleRepoHeader } from './ProjectGroup';
-import { branchColor, tagColor } from '../../shared/branchColors';
+import { RepoSyncActions } from './RepoSyncActions';
+import { BranchSelector } from './BranchSelector';
 import { GenericFileTree } from '../../shared/GenericFileTree';
 import * as l10n from '@vscode/l10n';
 
@@ -33,6 +34,9 @@ interface Props {
   onUnstageAll: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, staged: boolean) => void;
   onBranchClick: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCounts: Record<string, number>;
   onOpenStagedChanges: (repoId: string) => void;
   onOpenUnstagedChanges: (repoId: string) => void;
   iconTheme?: IconThemeData | null;
@@ -101,6 +105,9 @@ interface RepoSubGroupProps {
   onRepoContextMenu: (e: React.MouseEvent) => void;
   onBranchClick: (repoId: string) => void;
   onOpenChanges: () => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCount: number;
   repoSelected?: boolean;
   onToggleRepoSelection?: () => void;
   singleRepo?: boolean;
@@ -113,7 +120,7 @@ interface RepoSubGroupProps {
   scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles, scrollRef }: RepoSubGroupProps) {
+function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, onPull, onPush, outgoingCount, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles, scrollRef }: RepoSubGroupProps) {
   const repoId = repoStatus.repoId;
   const collapseKey = `vscode-repo-${staged ? 'staged' : 'unstaged'}:${repoId}`;
   const dirKeys = useMemo(() => {
@@ -128,9 +135,7 @@ function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewM
   const isEmpty = files.length === 0;
   // Empty repos default to collapsed; key presence means "explicitly opened"
   const collapsed = isEmpty ? !isCollapsed(collapseKey) : isCollapsed(collapseKey);
-  const branchClr = repoStatus.branch.detachedTag ? tagColor() : branchColor(repoStatus.branch.name, false);
   const [hovered, setHovered] = useState(false);
-  const [branchHovered, setBranchHovered] = useState(false);
 
   const onStage   = (file: FileStatus) => onStageFiles([file.path]);
   const onUnstage = (file: FileStatus) => onUnstageFiles([file.path]);
@@ -185,39 +190,29 @@ function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewM
             {isSubmodule && (
               <span style={submoduleBadgeStyle} title={submodulePath ? l10n.t('Submodule: {0}', submodulePath) : l10n.t('Submodule')}>{l10n.t({ message: 'SUB', comment: ['Short badge for a git submodule'] })}</span>
             )}
-            <span
-              style={branchBadgeStyle(branchClr, branchHovered)}
-              onClick={e => { e.stopPropagation(); onBranchClick(repoId); }}
-              onMouseEnter={e => { e.stopPropagation(); setBranchHovered(true); }}
-              onMouseLeave={e => { e.stopPropagation(); setBranchHovered(false); }}
-              title={repoStatus.branch.detachedTag ? l10n.t('Tag: {0} (detached HEAD)', repoStatus.branch.detachedTag) : repoStatus.branch.detachedHash ? l10n.t('Detached HEAD at {0}', repoStatus.branch.detachedHash) : repoStatus.branch.name}
-            >
-              <Codicon name={isWorktree ? 'worktree' : repoStatus.branch.detachedTag ? 'tag' : repoStatus.branch.detachedHash ? 'git-commit' : 'git-branch'} style={{ fontSize: '10px', flexShrink: 0, opacity: 0.8 }} />
-              <span style={branchNameStyle}>{repoStatus.branch.detachedTag ?? repoStatus.branch.detachedHash ?? repoStatus.branch.name}</span>
-            </span>
+            <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
           </div>
-          {!isEmpty && (
-            <div style={repoActionsStyle}>
-              {viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
-                <InlineIconBtn
-                  icon={expanded ? 'collapse-all' : 'expand-all'}
-                  title={expanded ? l10n.t('Collapse') : l10n.t('Expand')}
-                  visible={hovered}
-                  onClick={e => { e.stopPropagation(); setDirsCollapsed(dirKeys, expanded); }}
-                />
-              )}
-              <InlineIconBtn icon="diff-multiple" title={staged ? l10n.t('Open Staged Changes') : l10n.t('Open Changes')} visible={hovered} onClick={e => { e.stopPropagation(); onOpenChanges(); }} />
-              {!staged && (
-                <InlineIconBtn icon="discard" title={l10n.t('Rollback All')} visible={hovered} onClick={e => { e.stopPropagation(); onRollback(files); }} />
-              )}
-              {staged ? (
-                <InlineIconBtn icon="remove" title={l10n.t('Unstage All')} visible={hovered} onClick={e => { e.stopPropagation(); onUnstageFiles(files.map(f => f.path)); }} />
-              ) : (
-                <InlineIconBtn icon="add" title={l10n.t('Stage All')} visible={hovered} onClick={e => { e.stopPropagation(); onStageFiles(files.map(f => f.path)); }} />
-              )}
-              <span style={repoCountStyle}>{files.length}</span>
-            </div>
-          )}
+          <div style={repoActionsStyle}>
+            <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
+            {!isEmpty && viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
+              <InlineIconBtn
+                icon={expanded ? 'collapse-all' : 'expand-all'}
+                title={expanded ? l10n.t('Collapse') : l10n.t('Expand')}
+                visible={hovered}
+                onClick={e => { e.stopPropagation(); setDirsCollapsed(dirKeys, expanded); }}
+              />
+            )}
+            {!isEmpty && <InlineIconBtn icon="diff-multiple" title={staged ? l10n.t('Open Staged Changes') : l10n.t('Open Changes')} visible={hovered} onClick={e => { e.stopPropagation(); onOpenChanges(); }} />}
+            {!isEmpty && !staged && (
+              <InlineIconBtn icon="discard" title={l10n.t('Rollback All')} visible={hovered} onClick={e => { e.stopPropagation(); onRollback(files); }} />
+            )}
+            {!isEmpty && (staged ? (
+              <InlineIconBtn icon="remove" title={l10n.t('Unstage All')} visible={hovered} onClick={e => { e.stopPropagation(); onUnstageFiles(files.map(f => f.path)); }} />
+            ) : (
+              <InlineIconBtn icon="add" title={l10n.t('Stage All')} visible={hovered} onClick={e => { e.stopPropagation(); onStageFiles(files.map(f => f.path)); }} />
+            ))}
+            {!isEmpty && <span style={repoCountStyle}>{files.length}</span>}
+          </div>
         </div>
       )}
       {!collapsed && (
@@ -337,7 +332,7 @@ export function VscodeView({
   isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge,
   onStageFiles, onUnstageFiles, onStageAll, onUnstageAll,
-  onRepoContextMenu, onBranchClick, onOpenStagedChanges, onOpenUnstagedChanges, iconTheme, activeFolderPath,
+  onRepoContextMenu, onBranchClick, onOpenStagedChanges, onOpenUnstagedChanges, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath,
   selectedRepos, onToggleRepoSelection, onOpenAllChanges,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
@@ -382,6 +377,9 @@ export function VscodeView({
           onBranchClick={onBranchClick}
           onRepoContextMenu={(e, rid) => onRepoContextMenu(e, rid, true)}
           onOpenAllChanges={onOpenAllChanges ?? (() => {})}
+          onPull={onPull}
+          onPush={onPush}
+          outgoingCount={outgoingCounts[singleRepoStatus.repoId] ?? 0}
           hideOpenChanges
         />
       )}
@@ -434,6 +432,9 @@ export function VscodeView({
               onRepoContextMenu={e => onRepoContextMenu(e, r.repoId, true)}
               onBranchClick={onBranchClick}
               onOpenChanges={() => onOpenStagedChanges(r.repoId)}
+              onPull={onPull}
+              onPush={onPush}
+              outgoingCount={outgoingCounts[r.repoId] ?? 0}
               repoSelected={selectedRepos.has(r.repoId)}
               onToggleRepoSelection={() => onToggleRepoSelection(r.repoId)}
               singleRepo={isSingleRepo}
@@ -502,6 +503,9 @@ export function VscodeView({
               onRepoContextMenu={e => onRepoContextMenu(e, r.repoId, false)}
               onBranchClick={onBranchClick}
               onOpenChanges={() => onOpenUnstagedChanges(r.repoId)}
+              onPull={onPull}
+              onPush={onPush}
+              outgoingCount={outgoingCounts[r.repoId] ?? 0}
               singleRepo={isSingleRepo}
               isSubmodule={meta?.isSubmodule}
               submodulePath={meta?.submodulePath}
@@ -601,21 +605,6 @@ const repoDotStyle = (color: string): React.CSSProperties => ({
 
 const repoNameStyle: React.CSSProperties = {
   overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', flexShrink: 10, minWidth: '20px',
-};
-
-/** `hovered` mirrors the Log panel's "selected row" badge look — solid background instead of the usual 20%-tint. */
-const branchBadgeStyle = (color: string, hovered = false): React.CSSProperties => ({
-  display: 'inline-flex', alignItems: 'center', gap: '3px',
-  fontSize: '10px', fontWeight: 600, textTransform: 'none', letterSpacing: 0,
-  background: hovered ? color : `${color}33`,
-  color: hovered ? 'var(--vscode-editor-background)' : color,
-  border: `1px solid ${hovered ? color : `${color}88`}`,
-  borderRadius: '3px', padding: '1px 5px', flexShrink: 1, minWidth: 0, maxWidth: '160px',
-  marginLeft: '4px', cursor: 'pointer', overflow: 'hidden',
-});
-
-const branchNameStyle: React.CSSProperties = {
-  overflow: 'hidden', textOverflow: 'ellipsis', whiteSpace: 'nowrap', minWidth: 0,
 };
 
 const repoCountStyle: React.CSSProperties = {

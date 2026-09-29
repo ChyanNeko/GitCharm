@@ -29,6 +29,9 @@ interface Props {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
+  onPull: (repoId: string) => void;
+  onPush: (repoId: string) => void;
+  outgoingCounts: Record<string, number>;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
   ctxFile?: { repoId: string; path: string } | null;
@@ -42,7 +45,7 @@ export function ChangelistView({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, iconTheme, activeFolderPath, ctxFile,
+  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const metaMap = new Map(repoMetas.map(m => [m.id, m]));
@@ -119,6 +122,9 @@ export function ChangelistView({
           onBranchClick={onBranchClick}
           onRepoContextMenu={(e, rid) => onRepoContextMenu(e, rid)}
           onOpenAllChanges={() => {}}
+          onPull={onPull}
+          onPush={onPush}
+          outgoingCount={outgoingCounts[singleRepoStatus.repoId] ?? 0}
           hideOpenChanges
         />
       )}
@@ -148,11 +154,13 @@ export function ChangelistView({
         // Hide "Unversioned Files" when empty
         if (cl.id === CHANGELIST_UNVERSIONED_ID && repoGroups.length === 0) return null;
 
-        // For "Changes": show all repos, but exclude repos that already appear in any other changelist (including Unversioned Files)
+        // Keep a repo in "Changes" when it only has unversioned files, so its
+        // header remains visible above the separate "Unversioned Files" group.
+        // Repos with files in a custom changelist still follow the existing rule.
         const reposInOtherChangelists = new Set<string>();
         if (cl.id === CHANGELIST_DEFAULT_ID) {
           for (const other of changelists) {
-            if (other.id === CHANGELIST_DEFAULT_ID) continue;
+            if (other.id === CHANGELIST_DEFAULT_ID || other.id === CHANGELIST_UNVERSIONED_ID) continue;
             const otherMap = changelistFiles.get(other.id);
             if (!otherMap) continue;
             for (const [rid, files] of otherMap.entries()) {
@@ -197,6 +205,9 @@ export function ChangelistView({
             onRepoContextMenu={onRepoContextMenu}
             onOpenChanges={onOpenChanges}
             onBranchClick={onBranchClick}
+            onPull={onPull}
+            onPush={onPush}
+            outgoingCounts={outgoingCounts}
             iconTheme={iconTheme}
             activeFolderPath={activeFolderPath}
             ctxFile={ctxFile}

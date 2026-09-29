@@ -167,13 +167,14 @@ interface CommitCtxMenuState {
   singleHash: string | null; // set only when n === 1
 }
 
-function MenuItem({ icon, label, danger, onClick }: { icon: string; label: string; danger?: boolean; onClick: () => void }) {
+function MenuItem({ icon, label, danger, disabled, title, onClick }: { icon: string; label: string; danger?: boolean; disabled?: boolean; title?: string; onClick: () => void }) {
   return (
     <div
-      style={{ ...ctxStyles.item, ...(danger ? { color: 'var(--vscode-errorForeground)' } : {}) }}
-      onMouseEnter={e => (e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)')}
+      style={{ ...ctxStyles.item, ...(danger ? { color: 'var(--vscode-errorForeground)' } : {}), ...(disabled ? { opacity: 0.45, cursor: 'default' } : {}) }}
+      title={title}
+      onMouseEnter={e => { if (!disabled) e.currentTarget.style.background = 'var(--vscode-list-hoverBackground)'; }}
       onMouseLeave={e => (e.currentTarget.style.background = 'transparent')}
-      onClick={onClick}
+      onClick={disabled ? undefined : onClick}
     >
       <Codicon name={icon} style={{ fontSize: '13px', opacity: 0.8 }} />
       {label}
@@ -200,6 +201,8 @@ function CommitContextMenu({ state, onSquash, onDropCommits, onRevertCommits, on
 }) {
   const ref = useRef<HTMLDivElement>(null);
   const n = state.selectedHashes.length;
+  const selected = new Set(state.selectedHashes);
+  const canSquash = n >= 2 && state.commits.slice(0, n).every(c => selected.has(c.hash));
 
   useEffect(() => {
     const handler = (e: MouseEvent) => {
@@ -260,7 +263,7 @@ function CommitContextMenu({ state, onSquash, onDropCommits, onRevertCommits, on
           <MenuItem icon="discard" label={l10n.t('Revert {0} commits', n)} onClick={wrap(onRevertCommits)} />
           <div style={ctxStyles.separator} />
           <MenuItem icon="trash" label={l10n.t('Drop {0} commits', n)} danger onClick={wrap(onDropCommits)} />
-          <MenuItem icon="fold" label={l10n.t('Squash {0} commits…', n)} onClick={wrap(onSquash)} />
+          <MenuItem icon="fold" label={l10n.t('Squash {0} commits…', n)} disabled={!canSquash} title={canSquash ? undefined : l10n.t('Select consecutive commits starting at HEAD to squash.')} onClick={wrap(onSquash)} />
         </>
       )}
     </div>
@@ -320,6 +323,7 @@ function CommitRow({ commit, repoId, isHead, isSelected, suppressBorder, onOpenI
       style={{ ...styles.commitRow, ...(suppressBorder ? { borderBottom: 'none' } : {}), background: bg }}
       onMouseEnter={() => setHovered(true)}
       onMouseLeave={() => setHovered(false)}
+      onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
       onClick={onClick}
       onContextMenu={onContextMenu}
     >
@@ -384,6 +388,7 @@ function RepoSection({ repoStatus, repoMeta, unpushed, checked, canCheck, onTogg
   const collapseKey = `push-repo:${repoStatus.repoId}`;
   const expanded = !isCollapsed(collapseKey);
   const [multiSelectHashes, setMultiSelectHashes] = useState<Set<string>>(new Set());
+  const selectionAnchorRef = useRef<string | null>(null);
   const [ctxMenu, setCtxMenu] = useState<CommitCtxMenuState | null>(null);
   const [headerHovered, setHeaderHovered] = useState(false);
   const [branchHovered, setBranchHovered] = useState(false);
@@ -405,13 +410,24 @@ function RepoSection({ repoStatus, repoMeta, unpushed, checked, canCheck, onTogg
   const commits = unpushed?.commits ?? [];
 
   const handleCommitClick = (e: React.MouseEvent, hash: string) => {
-    if (e.ctrlKey || e.metaKey) {
+    if (e.shiftKey) {
+      const anchorIndex = commits.findIndex(c => c.hash === selectionAnchorRef.current);
+      const clickedIndex = commits.findIndex(c => c.hash === hash);
+      if (anchorIndex >= 0 && clickedIndex >= 0) {
+        setMultiSelectHashes(new Set(commits.slice(Math.min(anchorIndex, clickedIndex), Math.max(anchorIndex, clickedIndex) + 1).map(c => c.hash)));
+      } else {
+        setMultiSelectHashes(new Set([hash]));
+        selectionAnchorRef.current = hash;
+      }
+    } else if (e.ctrlKey || e.metaKey) {
+      selectionAnchorRef.current = hash;
       setMultiSelectHashes(prev => {
         const next = new Set(prev);
         if (next.has(hash)) next.delete(hash); else next.add(hash);
         return next;
       });
     } else {
+      selectionAnchorRef.current = hash;
       setMultiSelectHashes(new Set());
       onOpenDetail(repoStatus.repoId, hash);
     }
@@ -426,6 +442,7 @@ function RepoSection({ repoStatus, repoMeta, unpushed, checked, canCheck, onTogg
     } else {
       selectedHashes = new Set([commit.hash]);
       setMultiSelectHashes(selectedHashes);
+      selectionAnchorRef.current = commit.hash;
     }
     const isSingle = selectedHashes.size === 1;
     const singleHash = isSingle ? commit.hash : null;
