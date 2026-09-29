@@ -260,6 +260,7 @@ function App() {
   const store = useCommitStore(useShallow(({ commitMessage: _commitMessage, ...rest }) => rest));
   const pendingRef = useRef<Map<string, (msg: HostToCommitMsg) => void>>(new Map());
   const changesScrollRef = useRef<HTMLDivElement>(null);
+  const firstStatusTimingSentRef = useRef(false);
 
   // ── Tab ───────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabId>('changes');
@@ -508,7 +509,8 @@ function App() {
             hiddenRepoIds: msg.hiddenRepoIds,
           });
           break;
-        case 'COMMIT_STATUS_UPDATE':
+        case 'COMMIT_STATUS_UPDATE': {
+          const receivedAt = performance.now();
           store.setStatus(msg.repos, msg.status, msg.iconTheme, msg.defaultCommitAction, msg.defaultSaveAction, msg.hasWorkspaceFolder, msg.aiEnabled, msg.activeProfile);
           if (Array.isArray(msg.status.repos) && useCommitStore.getState().changesViewMode === 'vscode') {
             const prevCounts = prevUnstagedCountsRef.current;
@@ -528,6 +530,18 @@ function App() {
               prevCounts.set(repo.repoId, (repo.unstagedFiles ?? []).length);
             }
           }
+          if (!firstStatusTimingSentRef.current) {
+            firstStatusTimingSentRef.current = true;
+            const stateMs = Math.round(performance.now() - receivedAt);
+            const files = msg.status.repos.reduce((count, repo) => count + repo.stagedFiles.length + repo.unstagedFiles.length, 0);
+            requestAnimationFrame(() => requestAnimationFrame(() => {
+              send({ type: 'COMMIT_STARTUP_TIMING', files, stateMs, paintMs: Math.round(performance.now() - receivedAt) });
+            }));
+          }
+          break;
+        }
+        case 'COMMIT_ICON_THEME_UPDATE':
+          store.setIconTheme(msg.iconTheme);
           break;
         case 'CHANGELISTS_UPDATE':
           store.setChangelists(msg.changelists, msg.viewMode);
@@ -722,7 +736,7 @@ function App() {
       }
     };
     window.addEventListener('message', handler);
-    send({ type: 'COMMIT_REQUEST_STATUS' });
+    send({ type: 'COMMIT_REQUEST_STATUS', initial: true });
     return () => window.removeEventListener('message', handler);
   }, []);
 

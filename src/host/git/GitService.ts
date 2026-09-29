@@ -1,5 +1,5 @@
 import * as vscode from 'vscode';
-import { SimpleGit } from 'simple-git';
+import { SimpleGit, StatusResult } from 'simple-git';
 import { createGit } from './gitClient';
 import * as fs from 'fs';
 import * as os from 'os';
@@ -17,6 +17,7 @@ import type { StashEntry, UnpushedCommit } from '../types/messages';
 import { parseDiff, detectLanguage } from './DiffParser';
 import { getVscodeRepository } from './VscodeGitApi';
 import { ForcePushMode, Status, RefType } from './git.d';
+import { logDebug } from '../utils/Logger';
 
 const STATUS_MAP: Record<string, GitFileStatus> = {
   M: 'modified', A: 'added', D: 'deleted',
@@ -58,6 +59,7 @@ export class GitService {
   private git: SimpleGit;
   // Set immediately after a tag checkout, cleared when VS Code API confirms the update.
   private _pendingDetachedTag: string | undefined;
+  private freshStatusSamples = 0;
 
   constructor(public readonly repoId: string, public readonly rootPath: string) {
     this.git = createGit(rootPath);
@@ -79,10 +81,13 @@ export class GitService {
 
   /** Read status directly from git (bypasses VSCode's cached state). */
   async getStatusFresh(): Promise<RepoStatus> {
+    const started = Date.now();
+    const statusPromise = this.git.status();
     const [status, branchInfo] = await Promise.all([
-      this.git.status(),
-      this.getCurrentBranch(),
+      statusPromise,
+      this.getCurrentBranch(statusPromise),
     ]);
+    const statusReady = Date.now();
 
     // Override aheadBehind with a direct git count — always attempt rev-list since
     // the VS Code API's HEAD.upstream can lag and arrive undefined even when a tracking
@@ -99,6 +104,7 @@ export class GitService {
         freshBranchInfo = { ...branchInfo, aheadBehind: { ahead, behind } };
       }
     } catch { /* no upstream configured — leave aheadBehind as-is */ }
+    const countsReady = Date.now();
 
     const stagedFiles: FileStatus[] = [];
     const unstagedFiles: FileStatus[] = [];
@@ -123,8 +129,12 @@ export class GitService {
         unstagedFiles.push({ repoId: this.repoId, path: file.path, absolutePath: absPath, status: workingDir === '?' ? 'untracked' : (STATUS_MAP[workingDir] ?? 'modified'), staged: false, unstaged: true });
       }
     }
-
-    return { repoId: this.repoId, branch: freshBranchInfo, stagedFiles, unstagedFiles, isDetachedHead: status.detached, conflictCount, mergeRebaseState: await this.getMergeRebaseState() ?? undefined };
+    const mapped = Date.now();
+    const mergeRebaseState = await this.getMergeRebaseState() ?? undefined;
+    if (++this.freshStatusSamples <= 1) {
+      logDebug('startup-perf', `fresh status ${path.basename(this.rootPath)}: status/branch ${statusReady - started} ms, counts ${countsReady - statusReady} ms, map ${mapped - countsReady} ms, merge ${Date.now() - mapped} ms`);
+    }
+    return { repoId: this.repoId, branch: freshBranchInfo, stagedFiles, unstagedFiles, isDetachedHead: status.detached, conflictCount, mergeRebaseState };
   }
 
   private async getShortHash(): Promise<string | undefined> {
@@ -173,15 +183,20 @@ export class GitService {
     }
   }
 
-  async getStatus(): Promise<RepoStatus> {
+  getStatus(cachedOnly: true): Promise<RepoStatus | undefined>;
+  getStatus(cachedOnly?: false): Promise<RepoStatus>;
+  async getStatus(cachedOnly = false): Promise<RepoStatus | undefined> {
     const vsRepo = this.vsRepo();
     if (vsRepo) {
       const head = vsRepo.state.HEAD;
+      // The first panel snapshot may use vscode.git's in-memory state while the
+      // slower disk scan is running. Avoid every git command on that path.
+      if (cachedOnly && !head?.name && head?.type !== RefType.Tag) return undefined;
       // VS Code API may transiently report head.name as undefined during a branch
       // checkout before it has finished updating its internal state. When head.name
       // is absent but the type is NOT a Tag, fall back to rev-parse.
       let resolvedBranchName: string | undefined = head?.name;
-      if (!resolvedBranchName && head?.type !== RefType.Tag) {
+      if (!cachedOnly && !resolvedBranchName && head?.type !== RefType.Tag) {
         try {
           const raw = (await this.git.raw(['rev-parse', '--abbrev-ref', 'HEAD'])).trim();
           if (raw && raw !== 'HEAD') resolvedBranchName = raw;
@@ -190,8 +205,8 @@ export class GitService {
       const isDetached = !resolvedBranchName || head?.type === RefType.Tag;
       const branchName = isDetached ? 'HEAD' : resolvedBranchName!;
       // When type === Tag, head.name is the exact tag checked out
-      const detachedTag = isDetached ? await this.getDetachedTag(head?.type === RefType.Tag ? head.name : undefined) : undefined;
-      const detachedFullHash = (isDetached && !detachedTag) ? (head?.commit ?? await this.getFullHash()) : undefined;
+      const detachedTag = isDetached ? (cachedOnly ? (head?.type === RefType.Tag ? head.name : undefined) : await this.getDetachedTag(head?.type === RefType.Tag ? head.name : undefined)) : undefined;
+      const detachedFullHash = (isDetached && !detachedTag) ? (head?.commit ?? (cachedOnly ? undefined : await this.getFullHash())) : undefined;
       const detachedHash = detachedFullHash ? detachedFullHash.slice(0, 8) : undefined;
       const branchInfo: BranchInfo = {
         repoId: this.repoId,
@@ -233,7 +248,7 @@ export class GitService {
       // simple-git porcelain and handle them separately.
       const submoduleRelPaths = await this.getSubmoduleRelativePaths();
       const submodulePorcelainFiles: FileStatus[] = [];
-      if (submoduleRelPaths.size > 0) {
+      if (!cachedOnly && submoduleRelPaths.size > 0) {
         const porcelain = await this.git.status();
         for (const file of porcelain.files) {
           if (!submoduleRelPaths.has(file.path)) continue;
@@ -252,7 +267,8 @@ export class GitService {
         const f = makeFile(c, true);
         if (!f) continue;
         // Submodule paths are handled via porcelain above
-        if (submoduleRelPaths.has(f.path)) continue;
+        if (!cachedOnly && submoduleRelPaths.has(f.path)) continue;
+        if (submoduleRelPaths.has(f.path) && f.status !== 'conflicted') f.status = 'submodule';
         if (f.status === 'conflicted') conflictCount++;
         else stagedFiles.push(f);
       }
@@ -260,7 +276,8 @@ export class GitService {
         const f = makeFile(c, false);
         if (!f) continue;
         // Submodule paths are handled via porcelain above
-        if (submoduleRelPaths.has(f.path)) continue;
+        if (!cachedOnly && submoduleRelPaths.has(f.path)) continue;
+        if (submoduleRelPaths.has(f.path) && f.status !== 'conflicted') f.status = 'submodule';
         if (f.status === 'conflicted') conflictCount++;
         else unstagedFiles.push(f);
       }
@@ -295,14 +312,17 @@ export class GitService {
         unstagedFiles,
         isDetachedHead: isDetached,
         conflictCount,
-        mergeRebaseState: await this.getMergeRebaseState() ?? undefined,
+        mergeRebaseState: cachedOnly ? undefined : await this.getMergeRebaseState() ?? undefined,
       };
     }
 
+    if (cachedOnly) return undefined;
+
     // Fallback: simple-git
+    const statusPromise = this.git.status();
     const [status, branchInfo] = await Promise.all([
-      this.git.status(),
-      this.getCurrentBranch(),
+      statusPromise,
+      this.getCurrentBranch(statusPromise),
     ]);
 
     const stagedFiles: FileStatus[] = [];
@@ -332,7 +352,7 @@ export class GitService {
     return { repoId: this.repoId, branch: branchInfo, stagedFiles, unstagedFiles, isDetachedHead: status.detached, conflictCount, mergeRebaseState: await this.getMergeRebaseState() ?? undefined };
   }
 
-  async getCurrentBranch(): Promise<BranchInfo> {
+  async getCurrentBranch(statusPromise?: Promise<StatusResult>): Promise<BranchInfo> {
     const vsRepo = this.vsRepo();
     if (vsRepo) {
       const head = vsRepo.state.HEAD;
@@ -374,7 +394,7 @@ export class GitService {
         detachedFullHash,
       };
     }
-    const status = await this.git.status();
+    const status = await (statusPromise ?? this.git.status());
     const isDetached = status.detached;
     const branchName = await this.resolveHeadName(status.current ?? undefined);
     const detachedTag = isDetached ? await this.getDetachedTag() : undefined;

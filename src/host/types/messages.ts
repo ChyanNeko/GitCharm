@@ -79,6 +79,7 @@ export interface UnpushedCommit {
 
 export type HostToCommitMsg =
   | { type: 'COMMIT_STATUS_UPDATE'; repos: RepoMeta[]; status: WorkspaceStatus; iconTheme?: IconThemeData; defaultCommitAction?: 'commit' | 'commitAndPush'; defaultSaveAction?: 'stash' | 'shelve'; hasWorkspaceFolder?: boolean; aiEnabled?: boolean; activeProfile?: { name: string; gitName: string; gitEmail: string; builtIn?: 'local' | 'global' } }
+  | { type: 'COMMIT_ICON_THEME_UPDATE'; iconTheme: IconThemeData }
   | { type: 'COMMIT_PERSISTED_MESSAGE_RESULT'; message: string }
   | { type: 'COMMIT_DIFF_RESULT'; requestId: string; diff: FileDiff | null; error?: string }
   | { type: 'COMMIT_OP_RESULT'; requestId: string; ok: boolean; output?: string; error?: string; succeededRepoIds?: string[] }
@@ -120,7 +121,8 @@ export type HostToCommitMsg =
 // ─── Commit Panel: WebView → Host ────────────────────────────────────────────
 
 export type CommitToHostMsg =
-  | { type: 'COMMIT_REQUEST_STATUS' }
+  | { type: 'COMMIT_REQUEST_STATUS'; initial?: boolean }
+  | { type: 'COMMIT_STARTUP_TIMING'; files: number; stateMs: number; paintMs: number }
   | { type: 'COMMIT_PERSIST_MESSAGE'; message: string }
   | { type: 'COMMIT_REQUEST_DIFF'; requestId: string; repoId: string; filePath: string; staged: boolean }
   | { type: 'COMMIT_STAGE_FILES'; requestId: string; repoId: string; paths: string[] }

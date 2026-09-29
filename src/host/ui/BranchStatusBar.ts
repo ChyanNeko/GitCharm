@@ -104,13 +104,19 @@ export class BranchStatusBar implements vscode.Disposable {
     // Also refresh on branch change: the status change fires at 300ms and may catch
     // a transient HEAD state during checkout. The branch change fires at 400ms when
     // the VS Code Git API state is stable, ensuring the status bar corrects itself.
-    this.branchDisposable = this.manager.onBranchChange(() => this.manager.getAllStatusesFresh().then(s => this.refresh(s)));
+    this.branchDisposable = this.manager.onBranchChange(() => {
+      const status = this.manager.hasCompletedInitialStatus()
+        ? this.manager.getAllStatusesFresh()
+        : this.manager.getStatusForRefresh();
+      void status.then(s => this.refresh(s));
+    });
     this.configDisposable = vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('gitchyan.suppressDivergedBranchWarning')) {
         this.refresh();
       }
     });
-    this.manager.getAllStatusesFresh().then(s => this.refresh(s));
+    const cachedStatus = this.manager.getCachedStatus();
+    if (cachedStatus) void this.refresh(cachedStatus);
   }
 
   async refresh(preloadedStatus?: import('../types/git').WorkspaceStatus): Promise<void> {

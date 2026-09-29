@@ -8,6 +8,7 @@ import type { BranchInfo, CommitNode, RepoMeta, WorkspaceStatus } from '../types
 import { PROJECT_COLORS } from '../types/workspace';
 import { formatGitError } from '../utils/gitErrorUtils';
 import { mergeCommitLists } from '../utils/mergeCommitLists';
+import { logDebug } from '../utils/Logger';
 
 const MAX_SUBMODULE_DEPTH = 5;
 /**
@@ -42,6 +43,7 @@ type OrphanListener = (newlyOrphaned: Array<{ repoId: string; branchName: string
 export type { WorktreeEntry };
 
 export class WorkspaceGitManager implements vscode.Disposable {
+  readonly startupStartedAt = Date.now();
   private repos = new Map<string, GitService>();
   private repoMetas = new Map<string, RepoMeta>();
   /** Per-repo watchers — recreated on reinitialize(). */
@@ -67,6 +69,12 @@ export class WorkspaceGitManager implements vscode.Disposable {
   private orphanBaselineDone = new Set<string>();
   private refreshDebounce: NodeJS.Timeout | null = null;
   private refreshFollowUp: NodeJS.Timeout | null = null;
+  private statusRevision = 0;
+  private repositoryGeneration = 0;
+  private freshStatusInFlight: { promise: Promise<WorkspaceStatus> } | null = null;
+  private latestFreshStatus: { revision: number; sourceRevision: number; status: WorkspaceStatus } | null = null;
+  private startupStatusRuns = 0;
+  private repositoryScans = 0;
   private branchDebounce: NodeJS.Timeout | null = null;
   private graphDebounce: NodeJS.Timeout | null = null;
   private lastGraphRefresh = 0;
@@ -182,13 +190,24 @@ export class WorkspaceGitManager implements vscode.Disposable {
   private fetchOnStartupIfEnabled(onDone: () => void): void {
     const enabled = vscode.workspace.getConfiguration('gitchyan').get<boolean>('fetchOnStartup', true);
     if (enabled) {
-      this.fetchAll().catch(console.error).finally(onDone);
+      // Fetching seven repositories alongside the first status scan competes for
+      // disk and Git's index. The fetch is background work and can start once the
+      // first change list is ready.
+      this.getStatusForRefresh()
+        .catch(() => undefined)
+        .then(() => this.fetchAll())
+        .catch(console.error)
+        .finally(onDone);
     } else {
       onDone();
     }
   }
 
   private reinitialize(): void {
+    const started = Date.now();
+    this.repositoryGeneration++;
+    this.statusRevision++;
+    this.latestFreshStatus = null;
     this.disposeWatchers();
     this.repos.clear();
     this.repoMetas.clear();
@@ -235,6 +254,9 @@ export class WorkspaceGitManager implements vscode.Disposable {
 
     // Notify listeners that the set of known repos has changed (e.g. submodule added/removed)
     this.reposListeners.forEach(l => l());
+    if (++this.repositoryScans <= 3) {
+      logDebug('startup-perf', `repository discovery #${this.repositoryScans}: ${Date.now() - started} ms, ${this.repos.size} repositories`);
+    }
   }
 
   private registerVscodeDiscoveredRepositories(
@@ -651,11 +673,20 @@ export class WorkspaceGitManager implements vscode.Disposable {
   }
 
   private scheduleRefresh(): void {
+    const revision = ++this.statusRevision;
+    this.latestFreshStatus = null;
     if (this.refreshDebounce) clearTimeout(this.refreshDebounce);
     this.refreshDebounce = setTimeout(async () => {
-      const status = await this.getAllStatusesFresh();
+      if (revision !== this.statusRevision) return;
+      const status = await this.getStatusForRefresh();
+      if (revision !== this.statusRevision) return;
       this.detectNewUntrackedFiles(status);
       this.statusListeners.forEach(l => l(status));
+      // A file event during the scan may not be reflected in its result. Publish
+      // the first snapshot promptly, then check once more without overlapping scans.
+      if (revision === this.statusRevision && this.latestFreshStatus?.sourceRevision !== revision) {
+        this.scheduleRefresh();
+      }
     }, 300);
   }
 
@@ -916,18 +947,134 @@ export class WorkspaceGitManager implements vscode.Disposable {
     };
   }
 
+  /** Join the current refresh, or reuse its result until a new change invalidates it. */
+  getStatusForRefresh(): Promise<WorkspaceStatus> {
+    if (this.freshStatusInFlight) {
+      return this.freshStatusInFlight.promise;
+    }
+    if (this.latestFreshStatus?.revision === this.statusRevision) {
+      return Promise.resolve(this.latestFreshStatus.status);
+    }
+    return this.readFreshStatus(true);
+  }
+
+  getCachedStatus(): WorkspaceStatus | null {
+    return this.latestFreshStatus?.revision === this.statusRevision ? this.latestFreshStatus.status : null;
+  }
+
+  /** Return the first available status. vscode.git often finishes initializing a
+   * few seconds after this extension, while the initial disk scan is still busy. */
+  getInitialStatusForView(): Promise<WorkspaceStatus> {
+    const cached = this.getCachedStatus();
+    if (cached) return Promise.resolve(cached);
+    const fresh = this.getStatusForRefresh();
+    let timer: NodeJS.Timeout | undefined;
+    let checking = false;
+    const preliminary = new Promise<WorkspaceStatus>(resolve => {
+      const check = async () => {
+        if (checking) return;
+        checking = true;
+        try {
+          const status = await this.getPreliminaryStatus();
+          if (status) resolve(status);
+        } catch {
+          // The concurrent disk scan remains the fallback for a stale API state.
+        } finally {
+          checking = false;
+        }
+      };
+      timer = setInterval(() => { void check(); }, 250);
+      void check();
+    });
+    return Promise.race([
+      fresh.then(status => ({ status, source: 'git scan' })),
+      preliminary.then(status => ({ status, source: 'vscode.git cache' })),
+    ]).then(({ status, source }) => {
+      logDebug('startup-perf', `first view source: ${source}`);
+      return status;
+    }).finally(() => { if (timer) clearInterval(timer); });
+  }
+
+  /** Use vscode.git's populated in-memory state for the first paint, then let the
+   * already scheduled disk scan publish the authoritative status. */
+  async getPreliminaryStatus(): Promise<WorkspaceStatus | null> {
+    const started = Date.now();
+    const generation = this.repositoryGeneration;
+    // Checking HEAD first keeps the 250 ms startup poll cheap while vscode.git is
+    // still discovering submodules and populating its state.
+    if (Array.from(this.repos.values()).some(repo => !getVscodeRepository(repo.rootPath)?.state.HEAD)) return null;
+    const repos = await Promise.all(Array.from(this.repos.values()).map(repo => repo.getStatus(true)));
+    if (generation !== this.repositoryGeneration || repos.length === 0 || repos.some(repo => !repo)) return null;
+    const files = repos.reduce((count, repo) => count + repo!.stagedFiles.length + repo!.unstagedFiles.length, 0);
+    // An empty API state can mean that vscode.git has not scanned the repo yet.
+    if (files === 0) return null;
+    const status = { repos: this.applySubmoduleStatus(repos as import('../types/git').RepoStatus[]) };
+    logDebug('startup-perf', `preliminary vscode.git snapshot: ${Date.now() - started} ms, ${files} files`);
+    return status;
+  }
+
+  hasCompletedInitialStatus(): boolean {
+    return this.initialStatusDone;
+  }
+
   /** Like getAllStatuses but forces VSCode's git extension to re-read from disk first. */
-  async getAllStatusesFresh(): Promise<WorkspaceStatus> {
-    const results = await Promise.allSettled(
-      Array.from(this.repos.values()).map(r => r.getStatusFresh())
-    );
-    return {
-      repos: this.applySubmoduleStatus(
-        results
-          .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<GitService['getStatus']>>> => r.status === 'fulfilled')
-          .map(r => r.value)
-      ),
-    };
+  getAllStatusesFresh(): Promise<WorkspaceStatus> {
+    return this.readFreshStatus(false);
+  }
+
+  private readFreshStatus(shared: boolean): Promise<WorkspaceStatus> {
+    const revision = this.statusRevision;
+    const repositoryGeneration = this.repositoryGeneration;
+    const repoIds = Array.from(this.repos.keys());
+
+    const run = ++this.startupStatusRuns;
+    const started = Date.now();
+    const promise = (async () => {
+      const results = await Promise.allSettled(
+        Array.from(this.repos.values()).map(async repo => {
+          const repoStarted = Date.now();
+          try {
+            return await repo.getStatusFresh();
+          } finally {
+            if (run <= 3) {
+              logDebug('startup-perf', `status #${run} (${shared ? 'refresh' : 'forced'}) ${path.basename(repo.rootPath)}: ${Date.now() - repoStarted} ms`);
+            }
+          }
+        })
+      );
+      // VS Code Git can finish initializing during the scan. If it discovered a
+      // different repository set, read that set after this scan completes.
+      if (repositoryGeneration !== this.repositoryGeneration) {
+        const currentIds = Array.from(this.repos.keys());
+        if (repoIds.length !== currentIds.length || repoIds.some((id, index) => id !== currentIds[index])) {
+          return this.readFreshStatus(shared);
+        }
+      }
+
+      const filterStarted = Date.now();
+      const status: WorkspaceStatus = {
+        repos: this.applySubmoduleStatus(
+          results
+            .filter((r): r is PromiseFulfilledResult<Awaited<ReturnType<GitService['getStatus']>>> => r.status === 'fulfilled')
+            .map(r => r.value)
+        ),
+      };
+      if (shared) this.latestFreshStatus = { revision: this.statusRevision, sourceRevision: revision, status };
+      if (run <= 3) {
+        const files = status.repos.reduce((count, repo) => count + repo.stagedFiles.length + repo.unstagedFiles.length, 0);
+        logDebug('startup-perf', `status #${run} (${shared ? 'refresh' : 'forced'}): ${Date.now() - started} ms, filter ${Date.now() - filterStarted} ms, ${files} files`);
+      }
+      return status;
+    })();
+    if (shared) {
+      this.freshStatusInFlight = { promise };
+      void promise.then(() => {
+        if (this.freshStatusInFlight?.promise === promise) this.freshStatusInFlight = null;
+      }, () => {
+        if (this.freshStatusInFlight?.promise === promise) this.freshStatusInFlight = null;
+      });
+    }
+    return promise;
   }
 
   async getAllBranches(): Promise<BranchInfo[]> {

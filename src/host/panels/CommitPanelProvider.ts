@@ -21,7 +21,7 @@ import { pickRefQuickPick } from '../utils/refPicker';
 import type { GitProfileService } from '../git/GitProfileService';
 import type { BranchStatusBar } from '../ui/BranchStatusBar';
 import { formatGitError, showGitError, getRawErrorDetail, isPushRejected } from '../utils/gitErrorUtils';
-import { logInfo, logWarn, logError, notifyWithLogAction } from '../utils/Logger';
+import { logDebug, logInfo, logWarn, logError, notifyWithLogAction } from '../utils/Logger';
 import { plural } from '../utils/plural';
 import { ViewAndSortSettingsService } from '../settings/ViewAndSortSettingsService';
 import type { ViewAndSortSettings } from '../types/settings';
@@ -86,6 +86,12 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private createPullRequestPanel?: CreatePullRequestPanel;
   private pullRequestDetailPanel?: PullRequestDetailPanel;
   private discardInProgress = false;
+  private initialSidebarStatusSent = false;
+  private lastSidebarStatus: WorkspaceStatus | null = null;
+  private firstStatusRequestLogged = false;
+  private firstViewResolveLogged = false;
+  private lastReconciledStatus: WorkspaceStatus | null = null;
+  private lastReconciledMode?: 'simplified' | 'changelists' | 'vscode';
 
   setLogProvider(provider: GitLogPanelProvider): void {
     this.logProvider = provider;
@@ -193,7 +199,16 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     this.manager.onStatusChange(async (status) => {
       await this.refreshActiveProfile();
       this.postChangelistsUpdate(status);
-      this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+      const msg: HostToCommitMsg = { type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status };
+      if (this.initialSidebarStatusSent && this.lastSidebarStatus !== status) {
+        this.lastSidebarStatus = status;
+        this.broadcastCommit(msg);
+      } else {
+        // The ready handshake sends the initial status once; undocked views still receive updates.
+        this.enrichCommitMsg(msg);
+        this.syncBadgeFromMsg(msg);
+        this.undockedPanel?.postToCommit(msg);
+      }
     });
 
     const postAllBranches = async () => {
@@ -208,9 +223,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     this.manager.onBranchChange(postAllBranches);
 
     this.manager.onReposChange(async () => {
-      const status = await this.manager.getAllStatusesFresh();
-      this.postChangelistsUpdate(status);
-      this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+      // reinitialize() is followed by scheduleRefresh(); that single scan publishes status.
       await postAllBranches();
 
       const worktreeRepos = await this.manager.getAllWorktrees();
@@ -259,7 +272,13 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   }
 
   resolveWebviewView(webviewView: vscode.WebviewView): void {
+    if (!this.firstViewResolveLogged) {
+      this.firstViewResolveLogged = true;
+      logDebug('startup-perf', `view resolved ${Date.now() - this.manager.startupStartedAt} ms after activation`);
+    }
     this.view = webviewView;
+    this.initialSidebarStatusSent = false;
+    this.lastSidebarStatus = null;
     this.badgeController?.setWebviewView(webviewView);
 
     webviewView.webview.options = {
@@ -289,7 +308,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
 
     // Refresh status whenever the panel becomes visible (e.g. user switches to it)
     webviewView.onDidChangeVisibility(() => {
-      if (webviewView.visible) {
+      if (webviewView.visible && this.initialSidebarStatusSent) {
         this.postViewAndSortSettings();
         this.manager.getAllStatuses().then(status => {
           this.postChangelistsUpdate(status);
@@ -298,34 +317,11 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
     });
 
-    // Send view/sort settings first so the webview can render the file tree with the right mode from the start
-    this.postViewAndSortSettings();
-
-    // Restore a commit message draft scoped to this workspace — unlike localStorage,
-    // workspaceState never leaks a draft between unrelated projects on the same machine.
-    const persistedMessage = this.workspaceState?.get<string>(COMMIT_MESSAGE_WORKSPACE_KEY, '') ?? '';
-    if (persistedMessage) this.post({ type: 'COMMIT_PERSISTED_MESSAGE_RESULT', message: persistedMessage });
-
-    // Sync current state — send changelists first so setStatus can read the correct viewMode
-    this.manager.getAllStatuses().then(async status => {
-      await this.refreshActiveProfile();
-      this.postChangelistsUpdate(status);
-      this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
-      loadIconTheme(webviewView.webview).then(iconTheme => {
-        this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status, iconTheme });
-      }).catch(() => { /* icon theme optional */ });
-    });
-
     // Re-send icon theme when the user changes icon or color theme
     const configWatcher = vscode.workspace.onDidChangeConfiguration(e => {
       if (e.affectsConfiguration('workbench.iconTheme') || e.affectsConfiguration('workbench.colorTheme')) {
-        if (this.view) {
-          loadIconTheme(this.view.webview).then(iconTheme => {
-            this.manager.getAllStatuses().then(status => {
-              this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status, iconTheme });
-            });
-          }).catch(() => { /* icon theme optional */ });
-        }
+        if (this.view) this.postIconTheme(this.view.webview, false);
+        if (this.undockedPanel?.webview) this.postIconTheme(this.undockedPanel.webview, true);
       }
       if (e.affectsConfiguration('gitchyan.ai.enabled')) {
         this.manager.getAllStatuses().then(status => {
@@ -388,6 +384,14 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     } else {
       this.view?.webview.postMessage(msg);
     }
+  }
+
+  private postIconTheme(webview: vscode.Webview, undocked: boolean): void {
+    void loadIconTheme(webview).then(iconTheme => {
+      const msg: HostToCommitMsg = { type: 'COMMIT_ICON_THEME_UPDATE', iconTheme };
+      if (undocked && this.undockedPanel?.webview === webview) this.undockedPanel.postToCommit(msg);
+      else if (!undocked && this.view?.webview === webview) this.view.webview.postMessage(msg);
+    }).catch(() => { /* icon theme optional */ });
   }
 
   /** Re-fetches one repo's PR list under its current filters and pushes the result to the webview — used after any filter change. */
@@ -675,11 +679,19 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private postChangelistsUpdate(status?: WorkspaceStatus): void {
     const svc = this.getOrCreateChangelistService();
     if (!svc) return;
-    if (status) svc.reconcile(status.repos);
+    const viewMode = this.getChangesViewMode();
+    if (status && (status !== this.lastReconciledStatus || viewMode !== this.lastReconciledMode)) {
+      svc.reconcile(status.repos);
+      this.lastReconciledStatus = status;
+      this.lastReconciledMode = viewMode;
+    } else if (!status) {
+      // A changelist edit can change assignments without changing the Git snapshot.
+      this.lastReconciledStatus = null;
+    }
     this.broadcastCommit({
       type: 'CHANGELISTS_UPDATE',
       changelists: svc.getAll().map(cl => ({ ...cl, name: changelistDisplayName(cl) })),
-      viewMode: this.getChangesViewMode(),
+      viewMode,
     });
   }
 
@@ -754,14 +766,38 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_REQUEST_STATUS': {
-        const [repos, status, iconTheme] = await Promise.all([
-          Promise.resolve(this.manager.getRepoMetas()),
-          this.manager.getAllStatuses(),
-          this.view ? loadIconTheme(this.view.webview) : Promise.resolve(undefined),
-        ]);
-        this.post({ type: 'COMMIT_STATUS_UPDATE', repos, status, iconTheme });
+        const started = Date.now();
+        const undocked = _webview !== this.view?.webview;
+        const replyWebview = undocked ? this.undockedPanel?.webview : this.view?.webview;
         this.postViewAndSortSettings();
+        const persistedMessage = this.workspaceState?.get<string>(COMMIT_MESSAGE_WORKSPACE_KEY, '') ?? '';
+        if (persistedMessage) this.post({ type: 'COMMIT_PERSISTED_MESSAGE_RESULT', message: persistedMessage });
+        const initialStatus = msg.initial
+          ? await this.manager.getInitialStatusForView()
+          : await this.manager.getAllStatuses();
+        // The full scan may finish while the preliminary snapshot is assembled.
+        const status = msg.initial ? this.manager.getCachedStatus() ?? initialStatus : initialStatus;
+        const statusReady = Date.now();
         this.postChangelistsUpdate(status);
+        const statusMsg: HostToCommitMsg = { type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status };
+        this.enrichCommitMsg(statusMsg);
+        this.syncBadgeFromMsg(statusMsg);
+        if (undocked) this.undockedPanel?.postToCommit(statusMsg);
+        else this.view?.webview.postMessage(statusMsg);
+        if (!undocked) {
+          this.lastSidebarStatus = status;
+          this.initialSidebarStatusSent = true;
+        }
+        if (!this.firstStatusRequestLogged) {
+          this.firstStatusRequestLogged = true;
+          logDebug('startup-perf', `view request at ${started - this.manager.startupStartedAt} ms: status ${statusReady - started} ms, changelists/post ${Date.now() - statusReady} ms`);
+        }
+        if (msg.initial && replyWebview) this.postIconTheme(replyWebview, undocked);
+        break;
+      }
+
+      case 'COMMIT_STARTUP_TIMING': {
+        logDebug('startup-perf', `webview first status: ${msg.files} files, state ${msg.stateMs} ms, paint ${msg.paintMs} ms`);
         break;
       }
 

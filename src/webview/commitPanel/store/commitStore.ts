@@ -38,6 +38,7 @@ export interface CommitState {
   activeProfile?: { name: string; gitName: string; gitEmail: string; builtIn?: 'local' | 'global' };
 
   setStatus: (repos: RepoMeta[], status: WorkspaceStatus, iconTheme?: IconThemeData | null, defaultCommitAction?: 'commit' | 'commitAndPush', defaultSaveAction?: 'stash' | 'shelve', hasWorkspaceFolder?: boolean, aiEnabled?: boolean, activeProfile?: { name: string; gitName: string; gitEmail: string; builtIn?: 'local' | 'global' }) => void;
+  setIconTheme: (iconTheme: IconThemeData) => void;
   setRepoSelection: (repoId: string, selected: boolean) => void;
   isPushSelected: (repoId: string) => boolean;
   setPushSelection: (repoId: string, selected: boolean) => void;
@@ -225,6 +226,8 @@ export const useCommitStore = create<CommitState>((set, get) => ({
     }
     set({ repoMetas, status, repoSelections, fileSelections, seenFiles, collapsedKeys, statusViewMode: changesViewMode, ...(iconTheme !== undefined ? { iconTheme } : {}), ...(defaultCommitAction !== undefined ? { defaultCommitAction } : {}), ...(defaultSaveAction !== undefined ? { defaultSaveAction } : {}), ...(hasWorkspaceFolder !== undefined ? { hasWorkspaceFolder } : {}), ...(aiEnabled !== undefined ? { aiEnabled } : {}), ...(activeProfile !== undefined ? { activeProfile } : {}) });
   },
+
+  setIconTheme: (iconTheme) => set({ iconTheme }),
 
   setRepoSelection: (repoId, selected) =>
     set(s => ({ repoSelections: { ...s.repoSelections, [repoId]: selected } })),
