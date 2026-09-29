@@ -1183,6 +1183,145 @@ export class GitService {
       .catch(() => this.git.checkout(['--', filePath]));
   }
 
+  /** Discard selected files with one status read and one restore for tracked paths. */
+  async discardFiles(filePaths: string[]): Promise<Array<{ path: string; error: unknown }>> {
+    const paths = [...new Set(filePaths)];
+    if (paths.length === 0) return [];
+
+    const errors: Array<{ path: string; error: unknown }> = [];
+    const discardIndividually = async (items: string[]) => {
+      for (const filePath of items) {
+        try { await this.discardFile(filePath); }
+        catch (error: unknown) { errors.push({ path: filePath, error }); }
+      }
+    };
+
+    let status: Awaited<ReturnType<SimpleGit['status']>>;
+    try {
+      status = await this.git.status();
+    } catch {
+      await discardIndividually(paths);
+      return errors;
+    }
+
+    // simple-git uses `status -u`, which lists ordinary untracked files
+    // individually. Use those exact paths as the deletion allowlist.
+    const untracked = status.files
+      .filter(file => file.index === '?' && file.working_dir === '?')
+      .map(file => file.path);
+    const untrackedFiles = new Set(untracked);
+    const untrackedDirectories = new Set<string>();
+    for (const entry of untracked) {
+      let slash = entry.indexOf('/');
+      while (slash !== -1) {
+        untrackedDirectories.add(entry.slice(0, slash + 1));
+        slash = entry.indexOf('/', slash + 1);
+      }
+    }
+    const isUntracked = (filePath: string): boolean => {
+      return untrackedFiles.has(filePath) || untrackedDirectories.has(`${filePath.replace(/\/$/, '')}/`);
+    };
+    const trackedPaths: string[] = [];
+    const untrackedPaths: string[] = [];
+    for (const filePath of paths) {
+      (isUntracked(filePath) ? untrackedPaths : trackedPaths).push(filePath);
+    }
+
+    if (trackedPaths.length === 1) {
+      await discardIndividually(trackedPaths);
+    } else if (trackedPaths.length > 1) {
+      // A NUL-delimited pathspec file handles thousands of paths without hitting
+      // OS argument limits, and preserves filenames containing whitespace/newlines.
+      let tempDir: string | undefined;
+      try {
+        tempDir = await fs.promises.mkdtemp(path.join(os.tmpdir(), 'gitcharm-discard-'));
+        const pathspecFile = path.join(tempDir, 'paths');
+        const restoreBatch = async (items: string[]): Promise<void> => {
+          if (items.length === 1) {
+            await discardIndividually(items);
+            return;
+          }
+          await fs.promises.writeFile(pathspecFile, `${items.map(filePath => `:(literal)${filePath}`).join('\0')}\0`);
+          try {
+            await this.git.raw([
+              'restore', '--source=HEAD', '--staged', '--worktree',
+              `--pathspec-from-file=${pathspecFile}`, '--pathspec-file-nul',
+            ]);
+          } catch {
+            // Isolate bad paths without making every good file pay for a Git process.
+            const middle = Math.floor(items.length / 2);
+            await restoreBatch(items.slice(0, middle));
+            await restoreBatch(items.slice(middle));
+          }
+        };
+        await restoreBatch(trackedPaths);
+      } catch {
+        // If the temporary pathspec cannot be written, retain the old behavior.
+        await discardIndividually(trackedPaths);
+      } finally {
+        if (tempDir) await fs.promises.rm(tempDir, { recursive: true, force: true }).catch(() => {});
+      }
+    }
+
+    const selectedUntracked = new Set(untrackedPaths.map(filePath => filePath.replace(/\/$/, '')));
+    const untrackedToDelete = untracked.filter(entry => {
+      if (selectedUntracked.has(entry.replace(/\/$/, ''))) return true;
+      let slash = entry.indexOf('/');
+      while (slash !== -1) {
+        if (selectedUntracked.has(entry.slice(0, slash))) return true;
+        slash = entry.indexOf('/', slash + 1);
+      }
+      return false;
+    });
+
+    // File deletion is asynchronous and bounded so thousands of untracked files
+    // do not start thousands of Git processes or filesystem operations at once.
+    let next = 0;
+    await Promise.all(Array.from({ length: Math.min(32, untrackedToDelete.length) }, async () => {
+      while (next < untrackedToDelete.length) {
+        const filePath = untrackedToDelete[next++];
+        const absPath = path.resolve(this.rootPath, filePath);
+        const relative = path.relative(this.rootPath, absPath);
+        if (!relative || relative === '..' || relative.startsWith(`..${path.sep}`) || path.isAbsolute(relative)) {
+          errors.push({ path: filePath, error: new Error('Path is outside the repository') });
+          continue;
+        }
+        try {
+          await fs.promises.unlink(absPath);
+        } catch (error: unknown) {
+          if ((error as NodeJS.ErrnoException).code !== 'ENOENT') errors.push({ path: filePath, error });
+        }
+      }
+    }));
+
+    // Remove only empty directories represented by a selected untracked folder.
+    // Any ignored files inside keep the directory in place.
+    const selectedDirectories = untrackedPaths
+      .map(filePath => filePath.replace(/\/$/, ''))
+      .filter(filePath => untrackedDirectories.has(`${filePath}/`));
+    const dirsToPrune = new Set<string>();
+    for (const entry of untrackedToDelete) {
+      for (const selectedDir of selectedDirectories) {
+        if (!entry.startsWith(`${selectedDir}/`)) continue;
+        let dir = path.posix.dirname(entry);
+        while (dir === selectedDir || dir.startsWith(`${selectedDir}/`)) {
+          dirsToPrune.add(dir);
+          if (dir === selectedDir) break;
+          dir = path.posix.dirname(dir);
+        }
+      }
+    }
+    for (const dir of [...dirsToPrune].sort((a, b) => b.length - a.length)) {
+      try { await fs.promises.rmdir(path.resolve(this.rootPath, dir)); }
+      catch (error: unknown) {
+        if (!['ENOENT', 'ENOTEMPTY', 'EEXIST'].includes((error as NodeJS.ErrnoException).code ?? '')) {
+          errors.push({ path: dir, error });
+        }
+      }
+    }
+    return errors;
+  }
+
   async commit(message: string, amend: boolean, credentials?: { gitName: string; gitEmail: string }, log?: (s: string) => void): Promise<string> {
     log?.(`GitService.commit — credentials=${JSON.stringify(credentials)} amend=${amend}`);
     if (credentials?.gitName && credentials?.gitEmail) {

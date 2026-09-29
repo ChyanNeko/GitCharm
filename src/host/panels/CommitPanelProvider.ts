@@ -85,6 +85,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
   private cachedActiveProfile?: { name: string; gitName: string; gitEmail: string; builtIn?: 'local' | 'global' };
   private createPullRequestPanel?: CreatePullRequestPanel;
   private pullRequestDetailPanel?: PullRequestDetailPanel;
+  private discardInProgress = false;
 
   setLogProvider(provider: GitLogPanelProvider): void {
     this.logProvider = provider;
@@ -1199,51 +1200,95 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_DISCARD_FILE': {
+        if (this.discardInProgress) {
+          this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
+          break;
+        }
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) { logWarn('discard', 'Repo not found'); this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: vscode.l10n.t('Repo not found') }); return; }
-        const discard = vscode.l10n.t('Discard');
-        const confirm = await vscode.window.showWarningMessage(
-          vscode.l10n.t('Discard changes to {0}? This cannot be undone.', msg.path),
-          { modal: true }, discard
-        );
-        if (confirm !== discard) { this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' }); return; }
+        this.discardInProgress = true;
         try {
-          await repo.discardFile(msg.path);
-          this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: true });
-          const status = await this.manager.getAllStatusesFresh();
-          this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
-        } catch (e: unknown) {
-          logError('discard', formatGitError(e), getRawErrorDetail(e));
-          this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: formatGitError(e) });
+          const discard = vscode.l10n.t('Discard');
+          const confirm = await vscode.window.showWarningMessage(
+            vscode.l10n.t('Discard changes to {0}? This cannot be undone.', msg.path),
+            { modal: true }, discard
+          );
+          if (confirm !== discard) {
+            this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
+            break;
+          }
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('Discarding changes to 1 file…'), cancellable: false },
+            async () => {
+              try {
+                await repo.discardFile(msg.path);
+                this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: true });
+                const status = await this.manager.getAllStatusesFresh();
+                this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+              } catch (e: unknown) {
+                logError('discard', formatGitError(e), getRawErrorDetail(e));
+                this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: formatGitError(e) });
+              }
+            }
+          );
+        } finally {
+          this.discardInProgress = false;
         }
         break;
       }
 
       case 'COMMIT_DISCARD_FILES': {
-        const n = msg.files.length;
-        const discard = vscode.l10n.t('Discard');
-        const confirm = await vscode.window.showWarningMessage(
-          plural(n, vscode.l10n.t('Discard changes to 1 file? This cannot be undone.'), vscode.l10n.t('Discard changes to {0} files? This cannot be undone.', n)),
-          { modal: true }, discard
-        );
-        if (confirm !== discard) {
+        if (this.discardInProgress) {
           this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
           break;
         }
-        const errors: string[] = [];
-        for (const f of msg.files) {
-          const repo = this.manager.getRepo(f.repoId);
-          if (!repo) { errors.push(vscode.l10n.t('{0}: repo not found', f.path)); continue; }
-          try { await repo.discardFile(f.path); }
-          catch (e: unknown) { errors.push(`${f.path}: ${formatGitError(e)}`); logError(`discard-files:${f.repoId}`, formatGitError(e), getRawErrorDetail(e)); }
+        this.discardInProgress = true;
+        try {
+          const n = msg.files.length;
+          const discard = vscode.l10n.t('Discard');
+          const confirm = await vscode.window.showWarningMessage(
+            plural(n, vscode.l10n.t('Discard changes to 1 file? This cannot be undone.'), vscode.l10n.t('Discard changes to {0} files? This cannot be undone.', n)),
+            { modal: true }, discard
+          );
+          if (confirm !== discard) {
+            this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: 'Cancelled' });
+            break;
+          }
+          await vscode.window.withProgress(
+            { location: vscode.ProgressLocation.Notification, title: plural(n, vscode.l10n.t('Discarding changes to 1 file…'), vscode.l10n.t('Discarding changes to {0} files…', n)), cancellable: false },
+            async () => {
+              const errors: string[] = [];
+              const pathsByRepo = new Map<string, string[]>();
+              for (const f of msg.files) {
+                const repo = this.manager.getRepo(f.repoId);
+                if (!repo) { errors.push(vscode.l10n.t('{0}: repo not found', f.path)); continue; }
+                const paths = pathsByRepo.get(f.repoId) ?? [];
+                paths.push(f.path);
+                pathsByRepo.set(f.repoId, paths);
+              }
+              for (const [repoId, paths] of pathsByRepo) {
+                const repo = this.manager.getRepo(repoId);
+                if (!repo) {
+                  for (const filePath of paths) errors.push(vscode.l10n.t('{0}: repo not found', filePath));
+                  continue;
+                }
+                for (const { path: filePath, error } of await repo.discardFiles(paths)) {
+                  errors.push(`${filePath}: ${formatGitError(error)}`);
+                  logError(`discard-files:${repoId}`, formatGitError(error), getRawErrorDetail(error));
+                }
+              }
+              if (errors.length > 0) {
+                this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: errors.join('\n') });
+              } else {
+                this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: true });
+              }
+              const status = await this.manager.getAllStatusesFresh();
+              this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+            }
+          );
+        } finally {
+          this.discardInProgress = false;
         }
-        if (errors.length > 0) {
-          this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: errors.join('\n') });
-        } else {
-          this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: true });
-        }
-        const status = await this.manager.getAllStatusesFresh();
-        this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
         break;
       }
 
