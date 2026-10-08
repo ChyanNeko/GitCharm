@@ -7,8 +7,9 @@ export const LANE_WIDTH = 20;
 export const ROW_HEIGHT = 28;
 export const DOT_RADIUS = 4;
 
-export function laneX(col: number): number {
-  return col * LANE_WIDTH + LANE_WIDTH / 2;
+export function laneX(col: number, laneWidth = LANE_WIDTH): number {
+  // Preserve the left gutter so compressed lanes don't clip the first dot/halo.
+  return col * laneWidth + LANE_WIDTH / 2;
 }
 
 // ─── Public types ─────────────────────────────────────────────────────────────
@@ -58,12 +59,12 @@ export interface RowLine {
  * Returns the maximum pixel X occupied by any segment passing through this row.
  * Used to determine where text can safely start without overlapping graph lines.
  */
-export function getRowMaxX(row: number, segments: Segment[]): number {
+export function getRowMaxX(row: number, segments: Segment[], laneWidth = LANE_WIDTH): number {
   let max = 0;
   for (const s of segments) {
     if (row < s.p1y || row > s.p2y) continue;
-    const px1 = laneX(s.p1x);
-    const px2 = laneX(s.p2x);
+    const px1 = laneX(s.p1x, laneWidth);
+    const px2 = laneX(s.p2x, laneWidth);
     if (px1 > max) max = px1;
     if (px2 > max) max = px2;
   }

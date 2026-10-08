@@ -8,27 +8,25 @@ export { laneX };
 const STROKE = 1.5;
 const D = ROW_HEIGHT * 0.8;
 
-function colToX(col: number): number {
-  return col * LANE_WIDTH + LANE_WIDTH / 2;
-}
-
 // ─── Overlay SVG ─────────────────────────────────────────────────────────────
 
 interface GraphOverlayProps {
   segments: Segment[];
   visibleRows: Array<{ index: number; start: number }>;
-  totalHeight: number;
   graphWidth: number;
+  laneWidth?: number;
   offsetX?: number;
 }
 
 export const GraphOverlay = React.memo(function GraphOverlay({
-  segments, visibleRows, totalHeight, graphWidth, offsetX = 0,
+  segments, visibleRows, graphWidth, laneWidth = LANE_WIDTH, offsetX = 0,
 }: GraphOverlayProps) {
   if (visibleRows.length === 0) return null;
 
   const firstVisible = visibleRows[0].index;
   const lastVisible = visibleRows[visibleRows.length - 1].index;
+  const renderTop = visibleRows[0].start;
+  const renderBottom = visibleRows[visibleRows.length - 1].start + ROW_HEIGHT;
 
   const rowYMap = new Map<number, number>();
   for (const r of visibleRows) rowYMap.set(r.index, r.start + ROW_HEIGHT / 2);
@@ -40,33 +38,32 @@ export const GraphOverlay = React.memo(function GraphOverlay({
 
   for (const s of segments) {
     if (s.p2y < firstVisible || s.p1y > lastVisible) continue;
-    const x1 = colToX(s.p1x);
-    const x2 = colToX(s.p2x);
+    const x1 = laneX(s.p1x, laneWidth);
+    const x2 = laneX(s.p2x, laneWidth);
     let entry = branchPaths.get(s.branchId);
 
     if (x1 === x2) {
-      const y1 = getY(s.p1y);
-      const y2 = getY(s.p2y);
+      const y1 = Math.max(renderTop, getY(s.p1y));
+      const y2 = Math.min(renderBottom, getY(s.p2y));
       if (!entry) {
-        entry = { color: s.color, path: `M${x1.toFixed(0)},${y1.toFixed(1)}`, lastY: y1, lastX: x1 };
+        entry = { color: s.color, path: `M${x1.toFixed(1)},${y1.toFixed(1)}`, lastY: y1, lastX: x1 };
         branchPaths.set(s.branchId, entry);
       } else if (entry.lastX !== x1 || entry.lastY !== y1) {
-        entry.path += `M${x1.toFixed(0)},${y1.toFixed(1)}`;
+        entry.path += `M${x1.toFixed(1)},${y1.toFixed(1)}`;
       }
-      entry.path += `L${x2.toFixed(0)},${y2.toFixed(1)}`;
+      entry.path += `L${x2.toFixed(1)},${y2.toFixed(1)}`;
       entry.lastX = x2; entry.lastY = y2;
     } else {
-      for (let row = s.p1y; row < s.p2y; row++) {
-        if (row + 1 < firstVisible || row > lastVisible) continue;
+      for (let row = Math.max(s.p1y, firstVisible - 1); row < Math.min(s.p2y, lastVisible + 1); row++) {
         const y1 = getY(row);
         const y2 = getY(row + 1);
         if (!entry) {
-          entry = { color: s.color, path: `M${x1.toFixed(0)},${y1.toFixed(1)}`, lastY: y1, lastX: x1 };
+          entry = { color: s.color, path: `M${x1.toFixed(1)},${y1.toFixed(1)}`, lastY: y1, lastX: x1 };
           branchPaths.set(s.branchId, entry);
         } else if (entry.lastX !== x1 || entry.lastY !== y1) {
-          entry.path += `M${x1.toFixed(0)},${y1.toFixed(1)}`;
+          entry.path += `M${x1.toFixed(1)},${y1.toFixed(1)}`;
         }
-        entry.path += `C${x1.toFixed(0)},${(y1 + D).toFixed(1)} ${x2.toFixed(0)},${(y2 - D).toFixed(1)} ${x2.toFixed(0)},${y2.toFixed(1)}`;
+        entry.path += `C${x1.toFixed(1)},${(y1 + D).toFixed(1)} ${x2.toFixed(1)},${(y2 - D).toFixed(1)} ${x2.toFixed(1)},${y2.toFixed(1)}`;
         entry.lastX = x2; entry.lastY = y2;
       }
     }
@@ -79,11 +76,11 @@ export const GraphOverlay = React.memo(function GraphOverlay({
   }
 
   return (
-    <svg width={graphWidth} height={totalHeight} style={{
-      position: 'absolute', top: 0, left: offsetX,
-      pointerEvents: 'none', overflow: 'visible', zIndex: 2,
+    <svg width={graphWidth} height={renderBottom - renderTop} style={{
+      position: 'absolute', top: renderTop, left: offsetX,
+      pointerEvents: 'none', overflow: 'hidden', zIndex: 2,
     }}>
-      {pathElements}
+      <g transform={`translate(0, ${-renderTop})`}>{pathElements}</g>
     </svg>
   );
 });
@@ -93,33 +90,34 @@ export const GraphOverlay = React.memo(function GraphOverlay({
 interface CommitDotProps {
   commit: LaidOutCommit;
   isSelected: boolean;
-  graphWidth: number;
+  laneWidth?: number;
   offsetX?: number;
 }
 
-export const CommitDot = React.memo(function CommitDot({ commit, isSelected, graphWidth, offsetX = 0 }: CommitDotProps) {
+export const CommitDot = React.memo(function CommitDot({ commit, isSelected, laneWidth = LANE_WIDTH, offsetX = 0 }: CommitDotProps) {
   const dotCol = commit.lane ?? 0;
   const dotColor = commit.dotColor ?? anonymousLaneColor(dotCol);
-  const dotX = laneX(dotCol);
+  const dotX = laneX(dotCol, laneWidth);
   const cy = ROW_HEIGHT / 2;
   const r = isSelected ? DOT_RADIUS + 1 : DOT_RADIUS;
   const isMerge = commit.parents.length > 1;
   const haloR = isMerge ? r + 4.5 : r + 2.5;
+  const extent = haloR + 1;
   return (
     <svg
-      width={graphWidth}
+      width={extent * 2}
       height={ROW_HEIGHT}
-      style={{ position: 'absolute', left: offsetX, top: 0, overflow: 'hidden', zIndex: 3, pointerEvents: 'none' }}
+      style={{ position: 'absolute', left: offsetX + dotX - extent, top: 0, overflow: 'hidden', zIndex: 3, pointerEvents: 'none' }}
     >
-      <circle cx={dotX} cy={cy} r={haloR} fill="var(--vscode-editor-background)" />
+      <circle cx={extent} cy={cy} r={haloR} fill="var(--vscode-editor-background)" />
       {isMerge && (
-        <circle cx={dotX} cy={cy} r={r + 3}
+        <circle cx={extent} cy={cy} r={r + 3}
           fill="none"
           stroke={isSelected ? '#ffffff' : dotColor}
           strokeWidth={1.5} strokeOpacity={0.6}
         />
       )}
-      <circle cx={dotX} cy={cy} r={r}
+      <circle cx={extent} cy={cy} r={r}
         fill={isSelected ? '#ffffff' : dotColor}
         stroke={isSelected ? dotColor : 'var(--vscode-editor-background)'}
         strokeWidth={isSelected ? 2 : 1}

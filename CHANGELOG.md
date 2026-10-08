@@ -11,6 +11,8 @@ All notable changes to GitCharm are documented in this file.
 - Show a green outgoing arrow beside a branch with commits to push in the Changes header, with a dropdown chevron for the branch picker.
 
 ### 🐛 Bug Fixes
+- Git Log rows align author, date, message, branch labels and commit hash in bounded columns, with the branch graph last. Long author names and messages use ellipses, and hovering reveals the full text while commit details keep their existing behavior.
+- Git Log scrolls horizontally when many branch lanes or a narrow panel would clip the graph and commit information; use the bottom scrollbar, a trackpad, or Left/Right arrow keys. Extreme graphs compress lane spacing within a 4096px content limit, and graph SVGs only cover the visible rows to bound rendering size.
 - Repositories with only unversioned files remain visible in the Changes list while their files stay in Unversioned Files.
 - Commit messages remain after a successful commit and are saved per VS Code workspace until the user clears them, including after reopening the panel.
 

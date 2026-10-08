@@ -2,8 +2,8 @@ import React, { useRef, useCallback, useEffect, useLayoutEffect, useMemo, useSta
 import { createPortal } from 'react-dom';
 import { useVirtualizer } from '@tanstack/react-virtual';
 import type { LaidOutCommit, GraphLayout } from '../utils/graphLayout';
-import { GraphOverlay, CommitDot, laneX } from './CommitGraph';
-import { ROW_HEIGHT, LANE_WIDTH, getRowMaxX } from '../utils/graphLayout';
+import { GraphOverlay, CommitDot } from './CommitGraph';
+import { ROW_HEIGHT, LANE_WIDTH } from '../utils/graphLayout';
 import type { RepoMeta } from '../../shared/types';
 import { groupRefs, branchColor, tagColor, headColor } from '../utils/refs';
 import type { RefGroup } from '../utils/refs';
@@ -11,7 +11,7 @@ import { Codicon } from '../../shared/Codicon';
 import { getVsCodeApi } from '../../shared/vscodeApi';
 import type { LogToHostMsg } from '../../../host/types/messages';
 import { AuthorAvatar } from '../../shared/AuthorAvatar';
-import { formatDateTime, formatDateOnly, formatDateCompact } from '../../shared/dateUtils';
+import { formatDateTime } from '../../shared/dateUtils';
 import * as l10n from '@vscode/l10n';
 import { plural } from '../../shared/l10n';
 import { isImeComposing } from '../../shared/ime';
@@ -51,6 +51,17 @@ interface RepoBlock {
 
 const REPO_LABEL_WIDTH = 6;
 const REPO_LABEL_WIDTH_EXPANDED = 110;
+// All rows share these bounded columns; the graph never changes a text column's position.
+const AUTHOR_COLUMN_WIDTH = 148;
+const DATE_COLUMN_WIDTH = 124;
+const REFS_COLUMN_WIDTH = 220;
+const HASH_COLUMN_WIDTH = 90;
+const ACTIONS_COLUMN_WIDTH = 48;
+const MIN_MESSAGE_WIDTH = 280;
+const MAX_MESSAGE_WIDTH = 560;
+const COLUMN_GAP = 8;
+const ROW_PADDING = 8;
+const MAX_CONTENT_WIDTH = 4096;
 /** Visual gap painted between repo blocks in multi-repo view. Purely cosmetic — an
  * overlay drawn over the row boundary, not a real gap in row height/virtualization. */
 const BLOCK_GAP = 4;
@@ -172,12 +183,6 @@ const SKELETON_MIN_MS = 400;
 export function CommitList({ layout, selectedHash, repoColors: _repoColors, repos, activeRepoId, currentBranchByRepo, headHashByRepo, onSelect, onMultiSelectionChange, onLoadMore, hasMore, storeHasMore, loading, backgroundLoading, scrollTarget, onScrollTargetHandled, aiEnabled, activeProfile, hideDate }: Props) {
   const { commits, segments, refColors } = layout;
 
-  // graphWidth is stable: it only grows, never shrinks, so adding new commits
-  // doesn't cause the existing rows to shift right.
-  const graphWidthRef = useRef(0);
-  const graphWidth = Math.max(graphWidthRef.current, layout.totalCols * LANE_WIDTH + 4);
-  graphWidthRef.current = graphWidth;
-
   const parentRef = useRef<HTMLDivElement>(null);
   // Start as true — skeleton is always shown until commits arrive (handles first load correctly)
   const [showSkeleton, setShowSkeleton] = useState(true);
@@ -235,7 +240,7 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
   );
   useEffect(() => onMultiSelectionChange?.(multiSelectedCommits), [multiSelectedCommits, onMultiSelectionChange]);
 
-  const [containerWidth, setContainerWidth] = useState<number>(9999);
+  const [containerWidth, setContainerWidth] = useState(0);
   const containerRoRef = useRef<ResizeObserver | null>(null);
 
   const repoMeta = useMemo(() => {
@@ -318,6 +323,9 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
     ro.observe(el);
     containerRoRef.current = ro;
     const listener = () => {
+      // A popover's viewport coordinates become stale after either scroll axis moves.
+      if (hoverTimerRef.current) clearTimeout(hoverTimerRef.current);
+      setPopover(null);
       if (scrollRafRef.current !== null) return;
       scrollRafRef.current = requestAnimationFrame(() => {
         scrollRafRef.current = null;
@@ -406,6 +414,25 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
 
   const anyExpanded = expandedRepos.size > 0;
   const labelColWidth = multiRepo ? (anyExpanded ? REPO_LABEL_WIDTH_EXPANDED + 6 : REPO_LABEL_WIDTH + 8) : 0;
+  const authorWidth = hideDate ? 120 : AUTHOR_COLUMN_WIDTH;
+  const refsWidth = hideDate ? 40 : REFS_COLUMN_WIDTH;
+  const hashWidth = hideDate ? 32 : HASH_COLUMN_WIDTH;
+  const minMessageWidth = hideDate ? 180 : MIN_MESSAGE_WIDTH;
+  const maxMessageWidth = hideDate ? 320 : MAX_MESSAGE_WIDTH;
+  const fixedColumns = [authorWidth, ...(!hideDate ? [DATE_COLUMN_WIDTH] : []), refsWidth, hashWidth, ACTIONS_COLUMN_WIDTH];
+  // Includes a gap on either side of the message and before the final graph column.
+  const fixedWidth = fixedColumns.reduce((sum, width) => sum + width, 0) + (fixedColumns.length + 1) * COLUMN_GAP + ROW_PADDING * 2;
+  // Compress lane spacing for extreme graphs rather than allocating an unbounded
+  // horizontal surface or hiding branches. Dots, lines and text share this scale.
+  const graphBudget = MAX_CONTENT_WIDTH - labelColWidth - fixedWidth - minMessageWidth;
+  const columnSpan = Math.max(0, layout.totalCols - 1);
+  const laneWidth = Math.min(LANE_WIDTH, (graphBudget - LANE_WIDTH - 4) / Math.max(1, columnSpan));
+  const graphWidth = columnSpan * laneWidth + LANE_WIDTH + 4;
+  const messageWidth = Math.min(maxMessageWidth, Math.max(minMessageWidth, containerWidth - labelColWidth - fixedWidth - graphWidth));
+  const textColumns = [authorWidth, ...(!hideDate ? [DATE_COLUMN_WIDTH] : []), messageWidth, refsWidth, hashWidth, ACTIONS_COLUMN_WIDTH];
+  const graphOffset = labelColWidth + ROW_PADDING + textColumns.reduce((sum, width) => sum + width, 0) + textColumns.length * COLUMN_GAP;
+  const contentWidth = Math.max(containerWidth, graphOffset + graphWidth + ROW_PADDING);
+  const gridTemplateColumns = [...textColumns, graphWidth].map(width => `${width}px`).join(' ');
 
 
   function toggleRepo(repoId: string) {
@@ -422,6 +449,15 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
   // it isn't already visible, so repeated presses inside the viewport don't fight the user's
   // own scroll position.
   const handleKeyDown = useCallback((e: React.KeyboardEvent) => {
+    if (e.key === 'ArrowLeft' || e.key === 'ArrowRight') {
+      const el = parentRef.current;
+      if (el && el.scrollWidth > el.clientWidth) {
+        e.preventDefault();
+        suppressHoverBriefly();
+        el.scrollLeft += (e.key === 'ArrowLeft' ? -1 : 1) * Math.max(LANE_WIDTH, el.clientWidth / 3);
+      }
+      return;
+    }
     if (commits.length === 0) return;
     const currentIndex = selectedHash ? commits.findIndex(c => `${c.hash}:${c.repoId}` === selectedHash) : -1;
     // With nothing selected yet, start from the row the mouse is hovering — the first
@@ -502,7 +538,7 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
       onClick={() => { setContextMenu(null); setPopover(null); }}
     >
       <style>{BG_ANIM_STYLE}</style>
-      <div style={{ height: virtualizer.getTotalSize(), position: 'relative' }}>
+      <div style={{ width: contentWidth, height: virtualizer.getTotalSize(), position: 'relative' }}>
 
         {/* Repo label strips — inset by BLOCK_GAP/2 top and bottom (except at the very
             start/end of the list) so consecutive blocks don't touch, matching the pre-#41
@@ -530,13 +566,13 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
           );
         })}
 
-        {/* Graph overlay SVG — single SVG covering the entire virtual height */}
+        {/* Graph overlay SVG — only covers the virtualized rows, including overscan. */}
         <GraphOverlay
           segments={segments}
           visibleRows={items}
-          totalHeight={virtualizer.getTotalSize()}
           graphWidth={graphWidth}
-          offsetX={labelColWidth}
+          laneWidth={laneWidth}
+          offsetX={graphOffset}
         />
 
         {/* Commit rows (virtual) */}
@@ -546,16 +582,13 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
           const isSelected = `${commit.hash}:${commit.repoId}` === selectedHash;
           const isCurrentHead = headHashByRepo[commit.repoId] === commit.hash;
           const isMultiSelected = multiSelectHashes.has(`${commit.hash}:${commit.repoId}`);
-          const rowMaxX = Math.max(getRowMaxX(vrow.index, segments), laneX(commit.lane ?? 0));
-          const rawTextStart = rowMaxX + LANE_WIDTH / 2 + 10;
-          // Snap to the nearest LANE_WIDTH boundary so adjacent rows with near-identical
-          // graph widths align rather than showing a few-pixel stagger.
-          const textStart = Math.ceil(rawTextStart / LANE_WIDTH) * LANE_WIDTH + labelColWidth;
+          const authorName = commit.isStash ? (activeProfile?.gitName ?? l10n.t('You')) : commit.authorName;
 
           return (
             <div
               key={commit.hash}
-              style={{ ...styles.row(vrow.start, isSelected, isMultiSelected, hoveredIndex === vrow.index, !isSelected && contextMenu?.commit.hash === commit.hash && contextMenu?.commit.repoId === commit.repoId), paddingLeft: textStart }}
+              className="gitcharm-commit-row"
+              style={{ ...styles.row(vrow.start, isSelected, isMultiSelected, hoveredIndex === vrow.index, !isSelected && contextMenu?.commit.hash === commit.hash && contextMenu?.commit.repoId === commit.repoId), paddingLeft: labelColWidth + ROW_PADDING, gridTemplateColumns }}
               onMouseDown={e => { if (e.shiftKey) e.preventDefault(); }}
               onMouseEnter={(e) => {
                 if (isHoverSuppressed()) return;
@@ -672,88 +705,20 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
               <CommitDot
                 commit={commit}
                 isSelected={isSelected}
-                graphWidth={graphWidth}
-                offsetX={labelColWidth}
+                laneWidth={laneWidth}
+                offsetX={graphOffset}
               />
 
-              {commit.refs.length > 0 && (() => {
-                const allGroups = mergeLocalRemote(groupRefs(commit.refs));
-                const headBranchGroup = allGroups.find(g => g.isHead && !g.isDetached);
-                const remoteHeadGroup = allGroups.find(g => g.isRemoteHead);
-                const headAndRemoteHead = headBranchGroup && remoteHeadGroup;
-                const hc = headColor();
+              <div style={styles.meta} title={authorName}>
+                <AuthorAvatar authorName={authorName} authorEmail={commit.isStash ? (activeProfile?.gitEmail ?? '') : commit.authorEmail} size={20} isYou={commit.isStash && !activeProfile} />
+                <span style={styles.author}>{authorName}</span>
+              </div>
+              {!hideDate && (
+                <span style={styles.date} title={formatDateTime(commit.authorDate)}>
+                  {formatDateTime(commit.authorDate)}
+                </span>
+              )}
 
-                // Build the flat badge list in display order:
-                //   1. All branch/tag/remoteHead groups from mergeLocalRemote (unchanged order)
-                //      — remoteHead is skipped only when it is absorbed into the HEAD badge
-                //   2. A synthetic HEAD sentinel appended last (when HEAD branch exists)
-                // The HEAD sentinel is a separate entry so the branch badge ("origin & main")
-                // and the HEAD arrow badge are independent items in the MAX/overflow logic.
-                const HEAD_SENTINEL = '__HEAD__' as const;
-                type DisplayItem = RefGroup | '__HEAD__';
-                const displayItems: DisplayItem[] = [
-                  ...(headBranchGroup ? [HEAD_SENTINEL] : []),
-                  ...allGroups.filter(g => !(headAndRemoteHead && g === remoteHeadGroup)),
-                ];
-
-                const refsSpace = containerWidth - labelColWidth - 340;
-                const MAX = refsSpace < 130 ? 0 : refsSpace < 220 ? 1 : 2;
-                const visible = displayItems.slice(0, MAX);
-                const overflow = displayItems.slice(MAX);
-
-                const renderBadge = (item: DisplayItem, key: string | number) => {
-                  if (item === HEAD_SENTINEL) {
-                    const title = headAndRemoteHead
-                      ? `HEAD → ${headBranchGroup!.label} (${remoteHeadGroup!.remoteName}/HEAD)`
-                      : `HEAD → ${headBranchGroup!.label}`;
-                    return (
-                      <span key={key} style={styles.refBadge(hc, false, true, isSelected)} title={title}>
-                        {headAndRemoteHead
-                          ? <Codicon name="milestone" style={{ fontSize: '11px', flexShrink: 0, lineHeight: 1 }} />
-                          : <Codicon name="arrow-right" style={{ fontSize: '9px', flexShrink: 0, lineHeight: 1 }} />}
-                        <span style={styles.refBadgeLabel}>{headAndRemoteHead ? `${remoteHeadGroup!.remoteName} & HEAD` : 'HEAD'}</span>
-                      </span>
-                    );
-                  }
-                  const color = badgeColor(item, commit.repoId, refColors);
-                  return (
-                    <span key={key} style={styles.refBadge(color, item.isTag, (item.isHead || item.isDetached) && !item.isRemoteHead, isSelected)} title={badgeTitle(item)}>
-                      <RefBadgeIcon group={item} />
-                      <span style={styles.refBadgeLabel}>
-                        {item.isRemoteHead ? `${item.remoteName}/HEAD` : item.isLocal && item.isRemote ? `${item.remoteName || 'remote'} & ${item.label}` : item.isRemote ? remoteLabel(item) : item.label}
-                      </span>
-                    </span>
-                  );
-                };
-
-                const overflowColor = (item: DisplayItem) => item === HEAD_SENTINEL ? hc : badgeColor(item as RefGroup, commit.repoId, refColors);
-
-                return (
-                  <div style={styles.refs}>
-                    {visible.map((item, i) => renderBadge(item, i))}
-                    {overflow.length > 0 && (() => {
-                      const STEP = 4;
-                      // The front label itself stands in for overflow[0] — only the remaining
-                      // items get a stacked layer behind it, so the number of visible "cards"
-                      // (layers + label) always matches overflow.length instead of over-counting.
-                      const layers = overflow.slice(1, 4).reverse();
-                      const totalShift = layers.length * STEP;
-                      const frontColor = overflowColor(overflow[0]);
-                      return (
-                        <span
-                          style={{ ...styles.overflowWrapper, marginRight: totalShift }}
-                          title={overflow.map(g => g === HEAD_SENTINEL ? `HEAD → ${headBranchGroup!.label}` : badgeTitle(g as RefGroup)).join('\n')}
-                        >
-                          {layers.map((g, i) => (
-                            <span key={i} style={styles.overflowStackLayer(overflowColor(g), (layers.length - i) * STEP, isSelected)} />
-                          ))}
-                          <span style={styles.overflowLabel(frontColor, isSelected)}>{visible.length === 0 ? `${overflow.length}` : `+${overflow.length}`}</span>
-                        </span>
-                      );
-                    })()}
-                  </div>
-                );
-              })()}
               <div style={styles.info}>
                 {commit.isStash && (
                   <span style={{ ...styles.refBadge(commit.dotColor, false, false, isSelected), marginRight: '4px' }}>
@@ -761,47 +726,120 @@ export function CommitList({ layout, selectedHash, repoColors: _repoColors, repo
                     <span style={styles.refBadgeLabel}>{commit.stashRef}</span>
                   </span>
                 )}
-                <span style={{ ...styles.message, ...(isCurrentHead ? { fontWeight: 700 } : {}), ...(commit.parents.length >= 2 ? { opacity: 0.5 } : {}) }}>{commit.message.split('\n')[0]}</span>
+                <span title={commit.message} style={{ ...styles.message, ...(isCurrentHead ? { fontWeight: 700 } : {}), ...(commit.parents.length >= 2 ? { opacity: 0.5 } : {}) }}>{commit.message.split('\n')[0]}</span>
               </div>
 
-              {hoveredIndex === vrow.index && (
-                <div style={styles.inlineActions}>
-                  <button
-                    data-log-action-btn=""
-                    style={styles.inlineActionBtn}
-                    title={l10n.t('Open Commit Detail')}
-                    onClick={e => { e.stopPropagation(); getVsCodeApi().postMessage({ type: 'LOG_OPEN_EXTENDED_DETAIL', repoId: commit.repoId, hash: commit.hash } satisfies LogToHostMsg); }}
-                  >
-                    <Codicon name="open-preview" style={{ fontSize: '16px', lineHeight: 1 }} />
-                  </button>
-                  <button
-                    data-log-action-btn=""
-                    style={styles.inlineActionBtn}
-                    title={l10n.t('Open Changes')}
-                    onClick={e => { e.stopPropagation(); getVsCodeApi().postMessage({ type: 'LOG_OPEN_COMMIT_CHANGES', repoId: commit.repoId, hash: commit.hash } satisfies LogToHostMsg); }}
-                  >
-                    <Codicon name="diff-multiple" style={{ fontSize: '16px', lineHeight: 1 }} />
-                  </button>
-                </div>
-              )}
-              {commit.incoming && (
-                <Codicon name="arrow-down" style={styles.incomingIcon} title={l10n.t('Not pulled')} />
-              )}
-              {commit.unpushed && (
-                <Codicon name="arrow-up" style={styles.unpushedIcon} title={l10n.t('Not pushed')} />
-              )}
-              <div style={containerWidth > 550 ? styles.metaWithAuthor : styles.meta}>
-                <AuthorAvatar authorName={commit.isStash ? (activeProfile?.gitName ?? l10n.t('You')) : commit.authorName} authorEmail={commit.isStash ? (activeProfile?.gitEmail ?? '') : commit.authorEmail} size={20} isYou={commit.isStash && !activeProfile} />
-                {containerWidth > 550 && <span style={styles.author}>{formatAuthorName(commit.isStash ? (activeProfile?.gitName ?? l10n.t('You')) : commit.authorName)}</span>}
+              <div style={styles.refs}>
+                {commit.refs.length > 0 && (() => {
+                  const allGroups = mergeLocalRemote(groupRefs(commit.refs));
+                  const headBranchGroup = allGroups.find(g => g.isHead && !g.isDetached);
+                  const remoteHeadGroup = allGroups.find(g => g.isRemoteHead);
+                  const headAndRemoteHead = headBranchGroup && remoteHeadGroup;
+                  const hc = headColor();
+
+                  // Build the flat badge list in display order:
+                  //   1. All branch/tag/remoteHead groups from mergeLocalRemote (unchanged order)
+                  //      — remoteHead is skipped only when it is absorbed into the HEAD badge
+                  //   2. A synthetic HEAD sentinel appended last (when HEAD branch exists)
+                  // The HEAD sentinel is a separate entry so the branch badge ("origin & main")
+                  // and the HEAD arrow badge are independent items in the MAX/overflow logic.
+                  const HEAD_SENTINEL = '__HEAD__' as const;
+                  type DisplayItem = RefGroup | '__HEAD__';
+                  const displayItems: DisplayItem[] = [
+                    ...(headBranchGroup ? [HEAD_SENTINEL] : []),
+                    ...allGroups.filter(g => !(headAndRemoteHead && g === remoteHeadGroup)),
+                  ];
+
+                  // A fixed refs column keeps messages and hashes aligned even without refs.
+                  // Reserve space beside a badge for the overflow stack.
+                  const MAX = refsWidth >= 200 ? 1 : 0;
+                  const visible = displayItems.slice(0, MAX);
+                  const overflow = displayItems.slice(MAX);
+
+                  const renderBadge = (item: DisplayItem, key: string | number) => {
+                    if (item === HEAD_SENTINEL) {
+                      const title = headAndRemoteHead
+                        ? `HEAD → ${headBranchGroup!.label} (${remoteHeadGroup!.remoteName}/HEAD)`
+                        : `HEAD → ${headBranchGroup!.label}`;
+                      return (
+                        <span key={key} style={styles.refBadge(hc, false, true, isSelected)} title={title}>
+                          {headAndRemoteHead
+                            ? <Codicon name="milestone" style={{ fontSize: '11px', flexShrink: 0, lineHeight: 1 }} />
+                            : <Codicon name="arrow-right" style={{ fontSize: '9px', flexShrink: 0, lineHeight: 1 }} />}
+                          <span style={styles.refBadgeLabel}>{headAndRemoteHead ? `${remoteHeadGroup!.remoteName} & HEAD` : 'HEAD'}</span>
+                        </span>
+                      );
+                    }
+                    const color = badgeColor(item, commit.repoId, refColors);
+                    return (
+                      <span key={key} style={styles.refBadge(color, item.isTag, (item.isHead || item.isDetached) && !item.isRemoteHead, isSelected)} title={badgeTitle(item)}>
+                        <RefBadgeIcon group={item} />
+                        <span style={styles.refBadgeLabel}>
+                          {item.isRemoteHead ? `${item.remoteName}/HEAD` : item.isLocal && item.isRemote ? `${item.remoteName || 'remote'} & ${item.label}` : item.isRemote ? remoteLabel(item) : item.label}
+                        </span>
+                      </span>
+                    );
+                  };
+
+                  const overflowColor = (item: DisplayItem) => item === HEAD_SENTINEL ? hc : badgeColor(item as RefGroup, commit.repoId, refColors);
+
+                  return (
+                    <>
+                      {visible.map((item, i) => renderBadge(item, i))}
+                      {overflow.length > 0 && (() => {
+                        const STEP = 4;
+                        // The front label itself stands in for overflow[0] — only the remaining
+                        // items get a stacked layer behind it, so the number of visible "cards"
+                        // (layers + label) always matches overflow.length instead of over-counting.
+                        const layers = overflow.slice(1, 4).reverse();
+                        const totalShift = layers.length * STEP;
+                        const frontColor = overflowColor(overflow[0]);
+                        return (
+                          <span
+                            style={{ ...styles.overflowWrapper, marginRight: totalShift }}
+                            title={overflow.map(g => g === HEAD_SENTINEL ? `HEAD → ${headBranchGroup!.label}` : badgeTitle(g as RefGroup)).join('\n')}
+                          >
+                            {layers.map((g, i) => (
+                              <span key={i} style={styles.overflowStackLayer(overflowColor(g), (layers.length - i) * STEP, isSelected)} />
+                            ))}
+                            <span style={styles.overflowLabel(frontColor, isSelected)}>{visible.length === 0 ? `${overflow.length}` : `+${overflow.length}`}</span>
+                          </span>
+                        );
+                      })()}
+                    </>
+                  );
+                })()}
               </div>
-              {!hideDate && containerWidth > 330 && (
-                <span style={styles.date}>
-                  {containerWidth > 550 ? formatDateTime(commit.authorDate) : containerWidth > 380 ? formatDateOnly(commit.authorDate) : formatDateCompact(commit.authorDate)}
-                </span>
-              )}
-              {containerWidth > 550 && (
-                <span style={styles.shortHash} title={commit.hash}>{commit.shortHash}</span>
-              )}
+
+              <div style={styles.hashColumn}>
+                {commit.incoming && <Codicon name="arrow-down" style={styles.incomingIcon} title={l10n.t('Not pulled')} />}
+                {commit.unpushed && <Codicon name="arrow-up" style={styles.unpushedIcon} title={l10n.t('Not pushed')} />}
+                {!hideDate && <span style={styles.shortHash} title={commit.hash}>{commit.shortHash}</span>}
+              </div>
+
+              <div style={styles.actionColumn}>
+                {hoveredIndex === vrow.index && (
+                  <div style={styles.inlineActions}>
+                    <button
+                      data-log-action-btn=""
+                      style={styles.inlineActionBtn}
+                      title={l10n.t('Open Commit Detail')}
+                      onClick={e => { e.stopPropagation(); getVsCodeApi().postMessage({ type: 'LOG_OPEN_EXTENDED_DETAIL', repoId: commit.repoId, hash: commit.hash } satisfies LogToHostMsg); }}
+                    >
+                      <Codicon name="open-preview" style={{ fontSize: '16px', lineHeight: 1 }} />
+                    </button>
+                    <button
+                      data-log-action-btn=""
+                      style={styles.inlineActionBtn}
+                      title={l10n.t('Open Changes')}
+                      onClick={e => { e.stopPropagation(); getVsCodeApi().postMessage({ type: 'LOG_OPEN_COMMIT_CHANGES', repoId: commit.repoId, hash: commit.hash } satisfies LogToHostMsg); }}
+                    >
+                      <Codicon name="diff-multiple" style={{ fontSize: '16px', lineHeight: 1 }} />
+                    </button>
+                  </div>
+                )}
+              </div>
+              <div aria-hidden="true" />
             </div>
           );
         })}
@@ -908,7 +946,8 @@ function CommitPopover({ commit, rowTop, listRect, mouseX, onClose, popoverHover
     const left = Math.max(listRect.left, Math.min(listRect.right - w, mouseX - w / 2));
     // Prefer above the row; fall back to below if no room inside the list
     const preferTop = rowTop - h - 6;
-    const top = preferTop >= listRect.top ? preferTop : rowTop + ROW_HEIGHT + 6;
+    const desiredTop = preferTop >= listRect.top ? preferTop : rowTop + ROW_HEIGHT + 6;
+    const top = Math.max(8, Math.min(window.innerHeight - h - 8, desiredTop));
     setPos({ top, left });
   }, [stats, rowTop, listRect, mouseX]);
 
@@ -1005,6 +1044,7 @@ function CommitPopover({ commit, rowTop, listRect, mouseX, onClose, popoverHover
         );
       })()}
 
+      <div className="gitcharm-commit-popover-message" style={popoverStyles.message}>{commit.message}</div>
       <div style={popoverStyles.hint}>{l10n.t('Click for more details')}</div>
     </div>,
     document.body
@@ -1023,8 +1063,10 @@ const popoverStyles = {
     flexDirection: 'column',
     gap: '5px',
     boxShadow: '0 4px 16px rgba(0,0,0,0.3)',
-    minWidth: '260px',
-    maxWidth: '420px',
+    minWidth: 'min(260px, calc(100vw - 16px))',
+    maxWidth: 'min(420px, calc(100vw - 16px))',
+    maxHeight: 'calc(100vh - 16px)',
+    overflowY: 'auto',
     fontFamily: 'var(--vscode-font-family)',
     fontSize: '12px',
     color: 'var(--vscode-foreground)',
@@ -1056,9 +1098,7 @@ const popoverStyles = {
   },
   author: {
     fontWeight: 500,
-    overflow: 'hidden',
-    textOverflow: 'ellipsis',
-    whiteSpace: 'nowrap' as const,
+    overflowWrap: 'anywhere' as const,
     minWidth: 0,
   } as React.CSSProperties,
   dot: { opacity: 0.4, flexShrink: 0 } as React.CSSProperties,
@@ -1105,6 +1145,12 @@ const popoverStyles = {
     textOverflow: 'ellipsis',
     whiteSpace: 'nowrap',
     minWidth: 0,
+  } as React.CSSProperties,
+  message: {
+    whiteSpace: 'pre-wrap',
+    overflowWrap: 'anywhere',
+    maxHeight: '240px',
+    overflowY: 'auto',
   } as React.CSSProperties,
   hint: {
     fontSize: '10px',
@@ -1743,12 +1789,6 @@ function mergeLocalRemote(groups: RefGroup[]): RefGroup[] {
   return merged;
 }
 
-function formatAuthorName(name: string): string {
-  const parts = name.trim().split(/\s+/);
-  if (parts.length < 2) return name;
-  return `${parts[0]} ${parts[parts.length - 1][0]}.`;
-}
-
 function remoteLabel(group: RefGroup): string {
   const r = group.remoteName || 'remote';
   return `${r}/${group.label}`;
@@ -1845,13 +1885,15 @@ const styles = {
   outerWrapper: {
     flex: 1,
     minHeight: 0,
+    minWidth: 0,
     display: 'flex',
     flexDirection: 'column' as const,
   },
   container: {
     flex: 1,
+    minHeight: 0,
     overflowY: 'auto' as const,
-    overflowX: 'hidden' as const,
+    overflowX: 'auto' as const,
     position: 'relative' as const,
     background: 'var(--vscode-editor-background)',
     outline: 'none',
@@ -1903,10 +1945,11 @@ const styles = {
     left: 0,
     right: 0,
     height: ROW_HEIGHT,
-    display: 'flex',
+    display: 'grid',
     alignItems: 'center',
-    gap: '4px',
-    paddingRight: '8px',
+    gap: COLUMN_GAP,
+    paddingRight: ROW_PADDING,
+    boxSizing: 'border-box',
     overflow: 'hidden',
     cursor: 'pointer',
     background: selected
@@ -1921,38 +1964,18 @@ const styles = {
     color: selected ? 'var(--vscode-list-activeSelectionForeground)' : 'var(--vscode-foreground)',
     fontSize: '12px',
   }),
-  refsMeasureRow: (labelColWidth: number): React.CSSProperties => ({
-    position: 'absolute',
-    visibility: 'hidden',
-    pointerEvents: 'none',
-    display: 'flex',
-    alignItems: 'center',
-    gap: '4px',
-    paddingRight: '8px',
-    left: labelColWidth,
-    right: 0,
-    height: 0,
-    overflow: 'hidden',
-  }),
-  refsMeasureFixed: {
-    // Represents graph SVG + meta columns — fixed placeholder so refs gets compressed realistically.
-    // 60px graph estimate + 180px meta estimate + some gap.
-    flex: '1 3 0',
-    minWidth: '300px',
-    maxWidth: '500px',
-  } as React.CSSProperties,
   info: {
-    flex: '1 1 auto',
     display: 'flex',
     alignItems: 'center',
     overflow: 'hidden',
-    minWidth: '60px',
+    minWidth: 0,
   },
   refs: {
     display: 'flex',
     gap: '3px',
-    flex: '0 0 auto',
     alignItems: 'center',
+    minWidth: 0,
+    overflow: 'hidden',
   },
   refBadge: (color: string, isTag: boolean, isHead = false, isRowSelected = false): React.CSSProperties => ({
     fontSize: '10px',
@@ -2024,30 +2047,10 @@ const styles = {
     display: 'flex',
     gap: '6px',
     alignItems: 'center',
-    flex: '0 4 auto',
-    maxWidth: '300px',
-    // Never shrink below the avatar's own size (20px) — otherwise this box
-    // compresses faster than the date next to it and clips/squishes the avatar.
-    minWidth: '20px',
-    fontSize: '11px',
+    minWidth: 0,
+    fontSize: '12px',
     opacity: 0.65,
     overflow: 'hidden',
-    marginLeft: '8px',
-  },
-  // Used instead of `meta` whenever the author name span is rendered alongside the avatar:
-  // avatar (20px) + gap (6px) + ~5 characters (~34px) — below that the name would shrink
-  // to an unreadable ellipsis-clipped sliver instead of just not being there.
-  metaWithAuthor: {
-    display: 'flex',
-    gap: '6px',
-    alignItems: 'center',
-    flex: '0 4 auto',
-    maxWidth: '300px',
-    minWidth: '60px',
-    fontSize: '11px',
-    opacity: 0.65,
-    overflow: 'hidden',
-    marginLeft: '8px',
   },
   incomingIcon: {
     fontSize: '12px',
@@ -2072,27 +2075,31 @@ const styles = {
     whiteSpace: 'nowrap' as const,
     overflow: 'hidden',
     textOverflow: 'ellipsis',
-    // Never shrinks/truncates — instead the row picks a progressively shorter date
-    // format as containerWidth drops (full datetime → date only → dd/mm/yy), so the
-    // text is always short enough to fit without an ellipsis.
-    flexShrink: 0,
+    minWidth: 0,
     fontSize: '11px',
     opacity: 0.65,
-    marginLeft: '8px',
   },
+  hashColumn: {
+    display: 'flex',
+    alignItems: 'center',
+    justifyContent: 'flex-end',
+    gap: '4px',
+    minWidth: 0,
+  } as React.CSSProperties,
   shortHash: {
     fontFamily: 'var(--vscode-editor-font-family, monospace)',
     fontSize: '11px',
     opacity: 0.55,
     flexShrink: 0,
-    marginLeft: '8px',
   } as React.CSSProperties,
+  actionColumn: {
+    minWidth: 0,
+  },
   inlineActions: {
     display: 'flex',
     alignItems: 'center',
     gap: '2px',
     flexShrink: 0,
-    marginLeft: '4px',
   } as React.CSSProperties,
   inlineActionBtn: {
     background: 'transparent',
