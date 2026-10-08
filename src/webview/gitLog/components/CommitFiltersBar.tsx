@@ -11,6 +11,7 @@ interface Props {
   branches: BranchInfo[];
   tags: TagInfo[];
   repos: RepoMeta[];
+  resetKey: number;
   onFilterChange: (key: keyof CommitFilters, value: string) => void;
   onClear: () => void;
 }
@@ -25,7 +26,7 @@ function useIsLightTheme() {
   return light;
 }
 
-export function CommitFiltersBar({ filters, branches, tags, repos, onFilterChange, onClear }: Props) {
+export function CommitFiltersBar({ filters, branches, tags, repos, resetKey, onFilterChange, onClear }: Props) {
   const isLight = useIsLightTheme();
   useEffect(() => {
     const id = 'gitcharm-filter-field-focus';
@@ -38,7 +39,7 @@ export function CommitFiltersBar({ filters, branches, tags, repos, onFilterChang
   const groupedBranches = groupByName(branches);
   const groupedTags = groupByName(tags);
 
-  const hasFilters = !!(filters.text || filters.author || filters.branch || filters.dateFrom || filters.dateTo);
+  const hasFilters = !!(filters.text || filters.author || filters.branch || filters.filePath || filters.dateFrom || filters.dateTo);
 
   return (
     <div style={styles.bar}>
@@ -49,6 +50,7 @@ export function CommitFiltersBar({ filters, branches, tags, repos, onFilterChang
           icon="search"
           onChange={v => onFilterChange('text', v)}
           debounceMs={600}
+          resetKey={resetKey}
         />
 
         {/* Author */}
@@ -58,6 +60,17 @@ export function CommitFiltersBar({ filters, branches, tags, repos, onFilterChang
           icon="person"
           onChange={v => onFilterChange('author', v)}
           debounceMs={600}
+          resetKey={resetKey}
+        />
+
+        <DebouncedInput
+          value={filters.filePath}
+          placeholder={l10n.t('File path…')}
+          title={l10n.t('Repository-relative file path')}
+          icon="file"
+          onChange={v => onFilterChange('filePath', v)}
+          debounceMs={600}
+          resetKey={resetKey}
         />
 
         {/* Branch / Tag — custom dropdown */}
@@ -90,21 +103,27 @@ export function CommitFiltersBar({ filters, branches, tags, repos, onFilterChang
 
 /* ─── DebouncedInput ──────────────────────────────────────────────────────── */
 
-function DebouncedInput({ value, placeholder, icon, onChange, width, maxWidth: _maxWidth, debounceMs }: {
+function DebouncedInput({ value, placeholder, title, icon, onChange, width, maxWidth: _maxWidth, debounceMs, resetKey }: {
   value: string;
   placeholder: string;
+  title?: string;
   icon: string;
   onChange: (v: string) => void;
   width?: number;
   maxWidth?: number;
   debounceMs: number;
+  resetKey: number;
 }) {
   // Local display value so typing feels instant; fires onChange after debounce
   const [local, setLocal] = useState(value);
   const timerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
   // Keep local in sync when external value changes (e.g. clear)
-  useEffect(() => { setLocal(value); }, [value]);
+  useEffect(() => {
+    if (timerRef.current) clearTimeout(timerRef.current);
+    setLocal(value);
+    return () => { if (timerRef.current) clearTimeout(timerRef.current); };
+  }, [value, resetKey]);
 
   function handleChange(v: string) {
     setLocal(v);
@@ -115,16 +134,21 @@ function DebouncedInput({ value, placeholder, icon, onChange, width, maxWidth: _
   function handleKeyDown(e: React.KeyboardEvent<HTMLInputElement>) {
     if (isImeComposing(e)) return;
     if (e.key === 'Escape') { handleChange(''); e.currentTarget.blur(); }
-    if (e.key === 'Enter' && !local.trim()) { handleChange(''); }
+    if (e.key === 'Enter') {
+      if (timerRef.current) clearTimeout(timerRef.current);
+      onChange(local);
+    }
   }
 
   return (
-    <div data-filter-field="" style={{ ...styles.fieldWrap, ...(width ? { width } : { flex: 1, minWidth: 160 }) }}>
+    <div data-filter-field="" style={{ ...styles.fieldWrap, ...(width ? { width } : { flex: '1 1 160px', minWidth: 0 }) }}>
       <Codicon name={icon} style={styles.fieldIcon} />
       <input
         style={styles.fieldInput}
         type="text"
         placeholder={placeholder}
+        aria-label={placeholder}
+        title={value || title || placeholder}
         value={local}
         onChange={e => handleChange(e.target.value)}
         onKeyDown={handleKeyDown}

@@ -6,6 +6,7 @@ export interface CommitFilters {
   text: string;
   author: string;
   branch: string;
+  filePath: string;
   dateFrom: string;
   dateTo: string;
   repoId: string | null;
@@ -70,6 +71,7 @@ const defaultCommitFilters: CommitFilters = {
   text: '',
   author: '',
   branch: '',
+  filePath: '',
   dateFrom: '',
   dateTo: '',
   repoId: null,
@@ -174,7 +176,7 @@ export const useLogStore = create<LogState>((set, _get) => ({
     };
   }),
   setCommits: (commits, hasMore) => set({ commits, hasMore, loadingCommits: false, backgroundLoading: false }),
-  resetCommits: () => set({ commits: [], stashes: [], hasMore: true, reloading: false, backgroundLoading: false, loadingCommits: true, selectedCommit: null, commitFiles: [], currentDiff: null }),
+  resetCommits: () => set(s => ({ commits: [], stashes: [], hasMore: true, reloading: false, backgroundLoading: false, loadingCommits: true, selectedCommit: null, selectedFile: null, commitFiles: [], currentDiff: null, loadingFiles: false, loadingDiff: false, fileLoadSeq: s.fileLoadSeq + 1 })),
   // Warm refresh: keep the current commits (and selection) on screen until the
   // replacement batch lands. Only the thin progress bar indicates the reload.
   beginReload: () => set({ reloading: true, loadingCommits: true }),

@@ -1329,5 +1329,7 @@
   "Customized/State of an AI prompt: the user replaced the built-in one": "Personnalisé",
   "Default/State of an AI prompt: the built-in one is used": "Par défaut",
   "{0} did not answer within {1} seconds": "{0} n'a pas répondu dans les {1} secondes",
-  "{0} exited with code {1}": "{0} s'est terminé avec le code {1}"
+  "{0} exited with code {1}": "{0} s'est terminé avec le code {1}",
+  "File path…": "Chemin du fichier…",
+  "Repository-relative file path": "Chemin du fichier relatif au dépôt"
 }

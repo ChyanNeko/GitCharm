@@ -5,6 +5,7 @@ All notable changes to GitCharm are documented in this file.
 ## Unreleased
 
 ### ✨ New Features
+- View a file's history directly from the top of the Explorer, editor or editor-tab context menu, opening Git Log with its repository and file selected. The log's new file-path filter follows renames, supports the existing commit filters and pagination, and works with submodules and worktrees.
 - Select consecutive outgoing commits with Shift-click in the Push Preview, Push tab, or Git Log, then right-click to squash them in an editable commit-message panel.
 - Preview one repository's outgoing commits and changed files in an editor tab before confirming Push; multi-repository actions open the Push tab for review.
 - Pull and push a single repository from hover actions on its row in the Changes view.

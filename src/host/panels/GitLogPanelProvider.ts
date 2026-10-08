@@ -135,6 +135,9 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
   private commitPanel?: CommitPanelProvider;
   private undockedPanel?: UndockedPanelProvider;
   private hiddenRepoIds: string[] = [];
+  /** Explicit file-history requests can reveal hidden repositories and worktrees. */
+  private readonly fileHistoryRepoIds = new Set<string>();
+  private readonly pendingFileHistory: Partial<Record<ReplyTarget, { repoId: string; filePath: string }>> = {};
   private defaultBranchCache = new Map<string, string | undefined>();
   /** Location of the docked view, as reported by its webview. The undocked panel is always 'panel'. */
   private dockedLocation: LogViewLocation = 'panel';
@@ -206,7 +209,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
     }
   }
 
-  /** Clear the text/author/branch/date filters of the Git Log the user is looking at. */
+  /** Clear the commit filters of the Git Log the user is looking at. */
   clearFilters(): void {
     const msg: HostToLogMsg = { type: 'LOG_CLEAR_FILTERS' };
     if (this.undockedPanel?.isActive()) this.undockedPanel.postToLog(msg);
@@ -501,6 +504,37 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
     this.pendingFilterBranch = branch ?? null;
   }
 
+  /** Open the owning repository's file history in the preferred Git Log surface. */
+  showFileHistory(fileUri: vscode.Uri): void {
+    // Prefer the deepest repository: a parent workspace must not steal a submodule
+    // or nested worktree's file. path.relative also enforces directory boundaries.
+    const meta = this.manager.getRepoMetas()
+      .filter(m => {
+        const relative = path.relative(m.rootPath, fileUri.fsPath);
+        return relative !== '' && relative !== '..' && !relative.startsWith(`..${path.sep}`) && !path.isAbsolute(relative);
+      })
+      .sort((a, b) => b.rootPath.length - a.rootPath.length)[0];
+    if (!meta || !this.manager.getRepo(meta.id)) {
+      vscode.window.showErrorMessage(vscode.l10n.t('No git repository found for this file.'));
+      return;
+    }
+    this.fileHistoryRepoIds.add(meta.id);
+    const filePath = path.relative(meta.rootPath, fileUri.fsPath).split(path.sep).join('/');
+    const { target, wasOpen } = this.revealPreferred();
+    if (target === 'undocked') {
+      this.pendingUndocked = null;
+    } else {
+      this.pendingFilterRepoId = null;
+      this.pendingFilterBranch = null;
+      this.pendingScrollHash = null;
+      this.pendingScrollRepoId = null;
+    }
+    this.pendingFileHistory[target] = { repoId: meta.id, filePath };
+    // Keep the intent until a matching request acknowledges it. If opening/reloading
+    // HTML loses this message, the client's first request delivers it again.
+    if (wasOpen) this.postTo(target, { type: 'LOG_FILTER_BY_FILE', repoId: meta.id, filePath });
+  }
+
   /** Trigger a full log refresh — call this after any operation that creates new commits. */
   refresh(): void {
     this.broadcast({ type: 'LOG_REFRESH' });
@@ -607,7 +641,8 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
   }
 
   private getVisibleRepos() {
-    return this.getNonWorktreeRepos().filter(m => !this.hiddenRepoIds.includes(m.id));
+    return this.manager.getRepoMetas().filter(m =>
+      (!m.isWorktree && !this.hiddenRepoIds.includes(m.id)) || this.fileHistoryRepoIds.has(m.id));
   }
 
   /**
@@ -634,6 +669,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
   private async getFilteredBranches() {
     const ids = new Set(this.getNonWorktreeRepos().map(r => r.id));
+    this.fileHistoryRepoIds.forEach(id => ids.add(id));
     const all = await this.manager.getAllBranches();
     return all.filter(b => ids.has(b.repoId));
   }
@@ -679,6 +715,15 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
 
     switch (msg.type) {
       case 'LOG_REQUEST_COMMITS': {
+        const fileHistory = this.pendingFileHistory[origin];
+        if (fileHistory) {
+          if (msg.filterFilePath === fileHistory.filePath && msg.repoIds.length === 1 && msg.repoIds[0] === fileHistory.repoId) {
+            delete this.pendingFileHistory[origin];
+          } else {
+            post({ type: 'LOG_FILTER_BY_FILE', ...fileHistory });
+            return;
+          }
+        }
         // graphMaxCommits is a ceiling on how many commits the graph holds, not a page
         // size: pagination adds to what is already loaded, so the cap belongs on
         // skip + limit. Capping the page size alone let a deep scroll grow the list past
@@ -708,14 +753,16 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
           }).catch(() => {});
         }
 
+        const visibleRepoIds = new Set(repos.map(r => r.id));
         const logRepoIds = msg.repoIds.length > 0
-          ? msg.repoIds.filter(id => !this.manager.getRepoMetas().find(m => m.id === id)?.isWorktree && !this.hiddenRepoIds.includes(id))
-          : this.getVisibleRepos().map(r => r.id);
-        const commits = limit > 0
+          ? msg.repoIds.filter(id => visibleRepoIds.has(id))
+          : repos.filter(r => !r.isWorktree).map(r => r.id);
+        const commits = limit > 0 && logRepoIds.length > 0
           ? await this.manager.getInterleavedLog(logRepoIds, limit, msg.skip, {
             filterText: msg.filterText,
             filterAuthor: msg.filterAuthor,
             filterBranch: msg.filterBranch,
+            filterFilePath: msg.filterFilePath,
             filterDateFrom: msg.filterDateFrom,
             filterDateTo: msg.filterDateTo,
           })
@@ -742,7 +789,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
         }
 
         // Send stashes only on first load (not on pagination)
-        if (msg.skip === 0) {
+        if (msg.skip === 0 && !msg.filterFilePath) {
           Promise.all(logRepoIds.map(async (repoId) => {
             const repo = this.manager.getRepo(repoId);
             if (!repo) return [];

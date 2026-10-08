@@ -49,6 +49,8 @@ function App() {
   const { panelRef: detailRef, onMouseDown: onDetailResize } = useResize('left', 380, 200, 600);
   const [detailCollapsed, setDetailCollapsed] = useState(false);
   const [layoutByLocation, setLayoutByLocation] = useState(initialLayout);
+  const [fileHistoryFiltersVisible, setFileHistoryFiltersVisible] = useState(false);
+  const [filterResetKey, setFilterResetKey] = useState(0);
   const [viewLocation, setViewLocation] = useState(detectViewLocation);
   const { filtersHidden, sidebarHidden } = layoutByLocation[viewLocation];
   const [themeVersion, setThemeVersion] = useState(0);
@@ -67,6 +69,7 @@ function App() {
   const reloadRef = useRef<() => void>(() => {});
   const filterRepoRef = useRef<(repoId: string | null, branch?: string | null) => void>(() => {});
   const clearFiltersRef = useRef<() => void>(() => {});
+  const fileHistoryRef = useRef<(repoId: string, filePath: string) => void>(() => {});
   // Prevents concurrent requests
   const loadingInFlightRef = useRef(false);
   // Current requestId — used to discard responses from superseded requests
@@ -147,6 +150,7 @@ function App() {
           break;
         case 'LOG_LAYOUT_PREFS':
           setLayoutByLocation(msg.layout);
+          setFileHistoryFiltersVisible(false);
           break;
         case 'LOG_CLEAR_FILTERS':
           clearFiltersRef.current();
@@ -183,6 +187,9 @@ function App() {
           break;
         case 'LOG_FILTER_BY_REPO':
           filterRepoRef.current(msg.repoId, msg.branch ?? null);
+          break;
+        case 'LOG_FILTER_BY_FILE':
+          fileHistoryRef.current(msg.repoId, msg.filePath);
           break;
         case 'LOG_STASHES_BATCH':
           store.setStashes(msg.stashCommits, msg.queriedRepoIds);
@@ -235,6 +242,7 @@ function App() {
       filterText: f.text || undefined,
       filterAuthor: f.author || undefined,
       filterBranch: f.branch || undefined,
+      filterFilePath: f.filePath || undefined,
       // git --after and --before are exclusive; use time suffixes to make the range fully inclusive
       filterDateFrom: f.dateFrom ? `${f.dateFrom}T00:00:00` : undefined,
       filterDateTo: f.dateTo ? `${f.dateTo}T23:59:59` : undefined,
@@ -251,6 +259,7 @@ function App() {
   const reloadCommits = useCallback((overrides?: Partial<import('./store/logStore').CommitFilters>) => {
     loadingInFlightRef.current = false;
     const f = { ...useLogStore.getState().commitFilters, ...overrides };
+    setMultiSelectedCommits([]);
     useLogStore.getState().resetCommits();
     sendAppendRequest(f);
   }, [sendAppendRequest]);
@@ -291,9 +300,10 @@ function App() {
       return;
     }
     store.setLoadingFiles(true);
+    const fileLoadSeq = store.fileLoadSeq;
     const reqId = generateId();
     pendingRef.current.set(reqId, (msg) => {
-      if (msg.type === 'LOG_COMMIT_FILES') store.setCommitFiles(msg.files);
+      if (msg.type === 'LOG_COMMIT_FILES' && useLogStore.getState().fileLoadSeq === fileLoadSeq) store.setCommitFiles(msg.files);
     });
     getVsCodeApi().postMessage({
       type: 'LOG_REQUEST_COMMIT_FILES',
@@ -314,12 +324,15 @@ function App() {
     store.commitFilters.text ||
     store.commitFilters.author ||
     store.commitFilters.branch ||
+    store.commitFilters.filePath ||
     store.commitFilters.dateFrom ||
     store.commitFilters.dateTo
   );
 
   // Merge stashes into the commit list, filtering by branch if a branch filter is active
   const commitsWithStashes = useMemo(() => {
+    // Stashes are not part of a file's committed history.
+    if (store.commitFilters.filePath) return store.commits;
     const branchFilter = store.commitFilters.branch;
     const visibleStashes = branchFilter
       ? store.stashes.filter(s => s.stashBranch === branchFilter)
@@ -329,7 +342,7 @@ function App() {
     // git's topological order, which the graph layout depends on.
     const stashesNewestFirst = [...visibleStashes].sort((a, b) => new Date(b.committerDate).getTime() - new Date(a.committerDate).getTime());
     return mergeCommitLists([store.commits, stashesNewestFirst]);
-  }, [store.commits, store.stashes, store.commitFilters.branch]);
+  }, [store.commits, store.stashes, store.commitFilters.branch, store.commitFilters.filePath]);
 
   // assignLanes is expensive — run it off the render path via useEffect + rAF
   // so scroll events never block the UI thread waiting for layout recalc.
@@ -377,10 +390,10 @@ function App() {
       ? repoColors[store.selectedCommit.repoId]
       : undefined;
 
-  // text/author are debounced inside DebouncedInput; branch/date/repo fire immediately
+  // Text fields are debounced inside DebouncedInput; branch/date/repo fire immediately.
   const handleFilterChange = useCallback((key: keyof import('./store/logStore').CommitFilters, value: string) => {
     store.setCommitFilters({ [key]: value });
-    if (key === 'text' || key === 'author') {
+    if (key === 'text' || key === 'author' || key === 'filePath') {
       if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
       searchDebounceRef.current = setTimeout(() => reloadCommits({ [key]: value }), 0);
     } else {
@@ -402,17 +415,32 @@ function App() {
     reloadCommits(filters);
   };
 
+  fileHistoryRef.current = (repoId, filePath) => {
+    // A context-menu request starts a fresh file history, independent of old filters.
+    const filters = { text: '', author: '', branch: '', filePath, dateFrom: '', dateTo: '', repoId };
+    store.setCommitFilters(filters);
+    store.setPendingScrollTarget(null);
+    setFilterResetKey(v => v + 1);
+    setFileHistoryFiltersVisible(true);
+    if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
+    reloadCommits(filters);
+  };
+
   const handleClearFilters = useCallback(() => {
-    const cleared = { text: '', author: '', branch: '', dateFrom: '', dateTo: '', repoId: null };
+    const cleared = { text: '', author: '', branch: '', filePath: '', dateFrom: '', dateTo: '', repoId: null };
     store.setCommitFilters(cleared);
+    setFilterResetKey(v => v + 1);
+    setFileHistoryFiltersVisible(false);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     reloadCommits(cleared);
   }, [reloadCommits]);
 
   // "Clear Filters" from the title bar: the repository tab stays, since it is always on screen.
   clearFiltersRef.current = () => {
-    const cleared = { text: '', author: '', branch: '', dateFrom: '', dateTo: '' };
+    const cleared = { text: '', author: '', branch: '', filePath: '', dateFrom: '', dateTo: '' };
     store.setCommitFilters(cleared);
+    setFilterResetKey(v => v + 1);
+    setFileHistoryFiltersVisible(false);
     if (searchDebounceRef.current) clearTimeout(searchDebounceRef.current);
     reloadCommits(cleared);
   };
@@ -477,9 +505,10 @@ function App() {
     <div style={{ ...appStyle, position: 'relative' }} onContextMenu={e => e.preventDefault()}>
       {noRepoOverlay}
       {/* Filters bar — can be hidden from the view title bar */}
-      {!filtersHidden && (
+      {(!filtersHidden || fileHistoryFiltersVisible) && (
         <CommitFiltersBar
           filters={store.commitFilters}
+          resetKey={filterResetKey}
           branches={store.branches}
           tags={store.tags}
           repos={store.repos}

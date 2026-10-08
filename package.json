@@ -902,6 +902,11 @@
       ],
       "explorer/context": [
         {
+          "command": "gitchyan.showFileHistory",
+          "when": "resourceScheme == file && !explorerResourceIsFolder",
+          "group": "navigation@1"
+        },
+        {
           "submenu": "gitchyan/explorer",
           "when": "resourceScheme == file",
           "group": "gitchyan@1"
@@ -919,11 +924,18 @@
           "group": "navigation@2"
         }
       ],
+      "editor/title/context": [
+        {
+          "command": "gitchyan.showFileHistory",
+          "when": "resourceScheme == file",
+          "group": "navigation@1"
+        }
+      ],
       "editor/context": [
         {
           "command": "gitchyan.showFileHistory",
           "when": "resourceScheme == file",
-          "group": "gitchyan@1"
+          "group": "navigation@1"
         },
         {
           "command": "gitchyan.compareWith",

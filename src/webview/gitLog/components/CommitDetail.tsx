@@ -109,10 +109,10 @@ function FileContextMenu({ x, y, onShowDiff, onShowCombinedDiff, onEditSource, o
 
   return (
     <div ref={menuRef} style={menuStyle} onContextMenu={e => e.preventDefault()}>
+      <Item icon="history" label={l10n.t('Show File History')} onClick={onFileHistory} />
       <Item icon="diff" label={l10n.t('Show Diff')} onClick={onShowDiff} />
       <Item icon="diff-multiple" label={l10n.t('Show Combined Diff')} onClick={onShowCombinedDiff} />
       <Item icon="git-compare" label={l10n.t('Compare with…')} onClick={onCompareWith} />
-      <Item icon="history" label={l10n.t('Show File History')} onClick={onFileHistory} />
       <Item icon="go-to-file" label={l10n.t('Edit Source')} onClick={onEditSource} />
       {canApplyCommitChanges && (
         <>

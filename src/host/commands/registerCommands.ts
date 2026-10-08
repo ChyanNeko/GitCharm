@@ -5,7 +5,6 @@ import { BranchStatusBar } from '../ui/BranchStatusBar';
 import { FileAnnotationController } from '../ui/FileAnnotationController';
 import { ProfileStatusBar } from '../ui/ProfileStatusBar';
 import { WorkspaceGitManager } from '../git/WorkspaceGitManager';
-import { openFileHistoryPanel } from '../panels/FileHistoryPanel';
 import { compareWithCommand } from '../panels/CompareWithCommand';
 import { hasConflictMarkers } from '../git/ConflictParser';
 import { logInfo, logWarn, notifyWithLogAction, showLogChannel } from '../utils/Logger';
@@ -861,14 +860,15 @@ export function registerCommands(
     // ── File History ──────────────────────────────────────────────────────────
 
     vscode.commands.registerCommand('gitchyan.showFileHistory', async (uri?: vscode.Uri) => {
-      if (!manager || !extensionUri) return;
-      // uri comes from explorer/context or editor/context; fall back to active editor
+      if (!manager) return;
+      // Context menus pass the clicked resource, including inactive editor tabs.
+      // Only the Command Palette needs to fall back to the active editor.
       const fileUri = uri ?? vscode.window.activeTextEditor?.document.uri;
       if (!fileUri || fileUri.scheme !== 'file') {
         vscode.window.showInformationMessage(vscode.l10n.t('Open a file to view its history.'));
         return;
       }
-      await openFileHistoryPanel(extensionUri, manager, fileUri, logPanel);
+      logPanel.showFileHistory(fileUri);
     }),
 
     // ── Compare With ────────────────────────────────────────────────────────────

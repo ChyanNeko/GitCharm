@@ -591,8 +591,9 @@ export class GitService {
   }
 
   // Log uses raw git format for graph rendering — VS Code API's log() lacks graph parents/refs.
-  async getLog(limit: number, skip: number, opts?: { filterText?: string; filterAuthor?: string; filterBranch?: string; filterDateFrom?: string; filterDateTo?: string; worktreeServices?: GitService[] }): Promise<CommitNode[]> {
+  async getLog(limit: number, skip: number, opts?: { filterText?: string; filterAuthor?: string; filterBranch?: string; filterFilePath?: string; filterDateFrom?: string; filterDateTo?: string; worktreeServices?: GitService[] }): Promise<CommitNode[]> {
     const isHashSearch = opts?.filterText && /^[0-9a-f]{4,40}$/i.test(opts.filterText.trim());
+    const formatArgs = ['--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%ai%x00%ci%x00%D%x00%s', '--decorate=full', '--date=iso-strict', '--abbrev=8'];
     const args: string[] = [
       'log',
       // --date-order, not --topo-order: the log renders in committer-date order (see
@@ -602,24 +603,53 @@ export class GitService {
       '--date-order',
       // Hash search scans the full history without pagination — result is always a single commit
       ...(isHashSearch ? ['--max-count=50000'] : [`--max-count=${limit}`, `--skip=${skip}`]),
-      '--format=%H%x00%h%x00%P%x00%an%x00%ae%x00%ai%x00%ci%x00%D%x00%s', '--decorate=full',
-      '--date=iso-strict', '--abbrev=8',
+      ...formatArgs,
     ];
-    if (opts?.filterText && !isHashSearch) args.push(`--grep=${opts.filterText}`, '--regexp-ignore-case');
-    if (opts?.filterAuthor) args.push(`--author=${opts.filterAuthor}`, '--regexp-ignore-case');
-    if (opts?.filterDateFrom) args.push(`--after=${opts.filterDateFrom}`);
-    if (opts?.filterDateTo) args.push(`--before=${opts.filterDateTo}`);
+    const filterArgs: string[] = [];
+    if (opts?.filterText && !isHashSearch) filterArgs.push(`--grep=${opts.filterText}`, '--regexp-ignore-case');
+    if (opts?.filterAuthor) filterArgs.push(`--author=${opts.filterAuthor}`, '--regexp-ignore-case');
+    if (opts?.filterDateFrom) filterArgs.push(`--after=${opts.filterDateFrom}`);
+    if (opts?.filterDateTo) filterArgs.push(`--before=${opts.filterDateTo}`);
+    args.push(...filterArgs);
+    let revisionArgs: string[];
     if (isHashSearch) {
       // Hash search: scan full history, filter by prefix match after fetching
-      args.push('--exclude=refs/stash', '--all');
+      revisionArgs = ['--exclude=refs/stash', '--all'];
     } else if (opts?.filterBranch) {
-      args.push(opts.filterBranch);
+      revisionArgs = [opts.filterBranch];
     } else {
-      args.push('--exclude=refs/stash', '--all');
+      revisionArgs = ['--exclude=refs/stash', '--all'];
     }
-    const raw = await this.git.raw(args);
+    args.push(...revisionArgs);
+    if (opts?.filterFilePath) {
+      // One literal path keeps Git's filtering and rename tracking in the paged query.
+      // Names containing '*', '[' or ':' must not become pathspec patterns.
+      args.push('--follow', '--', `:(literal)${opts.filterFilePath}`);
+    }
     const hashPrefix = isHashSearch ? opts!.filterText!.trim().toLowerCase() : null;
-    let commits = this._parseLogOutput(raw);
+    let commits: CommitNode[];
+    if (opts?.filterFilePath && filterArgs.length > 0) {
+      // Git only follows a rename when the rename commit passes its log filters.
+      // Walk the file first, then let Git apply its normal regexp/date filters to
+      // those hashes. Small chunks bound argv/output, and stop once the page is full.
+      const hashesRaw = await this.git.raw([
+        'log', '--date-order', '--follow', '--format=%H', ...revisionArgs,
+        // --after is a traversal cutoff and is ignored by --no-walk. Applying
+        // the lower bound here only drops ancestors too old to match the query.
+        ...(opts.filterDateFrom ? [`--after=${opts.filterDateFrom}`] : []),
+        '--', `:(literal)${opts.filterFilePath}`,
+      ]);
+      const hashes = hashesRaw.trim().split('\n').filter(Boolean);
+      const matches: CommitNode[] = [];
+      const needed = isHashSearch ? 50000 : skip + limit;
+      for (let i = 0; i < hashes.length && matches.length < needed; i += 500) {
+        const raw = await this.git.raw(['log', '--no-walk=unsorted', ...formatArgs, ...filterArgs, ...hashes.slice(i, i + 500)]);
+        matches.push(...this._parseLogOutput(raw));
+      }
+      commits = isHashSearch ? matches.slice(0, needed) : matches.slice(skip, needed);
+    } else {
+      commits = this._parseLogOutput(await this.git.raw(args));
+    }
     if (hashPrefix) commits = commits.filter(c => c.hash.toLowerCase().startsWith(hashPrefix));
 
     // Mark unpushed commits: hashes ahead of the remote tracking branch.

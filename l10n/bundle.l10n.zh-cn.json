@@ -1329,5 +1329,7 @@
   "Customized/State of an AI prompt: the user replaced the built-in one": "已自定义",
   "Default/State of an AI prompt: the built-in one is used": "默认",
   "{0} did not answer within {1} seconds": "{0} 未在 {1} 秒内响应",
-  "{0} exited with code {1}": "{0} 已退出，代码为 {1}"
+  "{0} exited with code {1}": "{0} 已退出，代码为 {1}",
+  "File path…": "文件路径…",
+  "Repository-relative file path": "相对于仓库根目录的文件路径"
 }
