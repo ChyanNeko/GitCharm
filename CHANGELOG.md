@@ -11,6 +11,7 @@ All notable changes to GitCharm are documented in this file.
 - Show a green outgoing arrow beside a branch with commits to push in the Changes header, with a dropdown chevron for the branch picker.
 
 ### 🐛 Bug Fixes
+- Ordinary Push actions in a repository's branch menus open the shared Push Preview for that repository and require confirmation before pushing.
 - Remove redundant pull and push hover buttons from repository headers in all Changes view modes; these actions remain available through the branch menu.
 - Git Log rows align author, date, message, branch labels and commit hash in bounded columns, with the branch graph last. Long author names and messages use ellipses, and hovering reveals the full text while commit details keep their existing behavior.
 - Git Log scrolls horizontally when many branch lanes or a narrow panel would clip the graph and commit information; use the bottom scrollbar, a trackpad, or Left/Right arrow keys. Extreme graphs compress lane spacing within a 4096px content limit, and graph SVGs only cover the visible rows to bound rendering size.

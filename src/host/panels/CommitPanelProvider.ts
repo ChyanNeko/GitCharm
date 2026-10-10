@@ -119,6 +119,15 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
     this.branchStatusBar = bar;
   }
 
+  async openPushPreview(repoId: string): Promise<void> {
+    this.pushPreviewPanel ??= new PushPreviewPanel(this.extensionUri, this.manager, async () => {
+      const status = await this.manager.getAllStatusesFresh();
+      this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+      this.logProvider?.refresh();
+    });
+    await this.pushPreviewPanel.open(repoId);
+  }
+
   handleUndockedMessage(msg: CommitToHostMsg, _provider: UndockedPanelProvider): void {
     this.activeReplyTarget = 'undocked';
     this.handleMessage(msg, undefined as unknown as vscode.Webview)
@@ -1090,12 +1099,7 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
       }
 
       case 'COMMIT_OPEN_PUSH_PREVIEW': {
-        this.pushPreviewPanel ??= new PushPreviewPanel(this.extensionUri, this.manager, async () => {
-          const status = await this.manager.getAllStatusesFresh();
-          this.broadcastCommit({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
-          this.logProvider?.refresh();
-        });
-        await this.pushPreviewPanel.open(msg.repoId);
+        await this.openPushPreview(msg.repoId);
         break;
       }
 

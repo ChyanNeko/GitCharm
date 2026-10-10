@@ -90,7 +90,8 @@ export class BranchStatusBar implements vscode.Disposable {
 
   constructor(
     private readonly manager: WorkspaceGitManager,
-    private readonly commitPanelReveal: () => void
+    private readonly commitPanelReveal: () => void,
+    private readonly openPushPreview: (repoId: string) => Promise<void>,
   ) {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
@@ -1236,37 +1237,7 @@ export class BranchStatusBar implements vscode.Disposable {
       {
         label: `$(repo-push) ${vscode.l10n.t('Push')}`,
         description: vscode.l10n.t('Push to remote'),
-        action: async () => {
-          const remotes = await repo.getRemotes().catch(() => [] as string[]);
-          if (remotes.length === 0) {
-            vscode.window.showWarningMessage(vscode.l10n.t('[{0}]: No remotes configured.', meta.name));
-            logWarn(`push:${meta.name}`, 'No remotes configured.');
-            return;
-          }
-          let targetRemote = remotes[0];
-          if (remotes.length > 1) {
-            const picked = await vscode.window.showQuickPick(
-              remotes.map(r => ({ label: `$(cloud-upload) ${r}`, remote: r })),
-              { title: vscode.l10n.t('Push {0} — select remote', meta.name) }
-            ) as { label: string; remote: string } | undefined;
-            if (!picked) return;
-            targetRemote = picked.remote;
-          }
-          await vscode.window.withProgress(
-            { location: vscode.ProgressLocation.Notification, title: vscode.l10n.t('[{0}]: Pushing to {1}…', meta.name, targetRemote), cancellable: false },
-            async () => {
-              try {
-                await repo.push(false, targetRemote);
-                const msg = `[${meta.name}]: pushed to "${targetRemote}" successfully.`;
-                vscode.window.showInformationMessage(vscode.l10n.t('[{0}]: pushed to "{1}" successfully.', meta.name, targetRemote));
-                logInfo(`push:${meta.name}`, msg);
-              } catch (e: unknown) {
-                showGitError(`push:${meta.name}`, e);
-              }
-            }
-          );
-          await this.refresh();
-        },
+        action: () => this.openPushPreview(meta.id),
       },
       {
         label: `$(repo-force-push) ${vscode.l10n.t('Force Push')}`,
@@ -1591,7 +1562,7 @@ export class BranchStatusBar implements vscode.Disposable {
     if (hasUnpushed) {
       items.push({
         label: `$(cloud-upload) ${vscode.l10n.t('Push')}`,
-        action: () => this.pushSingleRepo(meta),
+        action: () => this.openPushPreview(meta.id),
       });
     }
 
@@ -2074,20 +2045,6 @@ export class BranchStatusBar implements vscode.Disposable {
       await offerRenameBranchRemoteSync(repo, meta.name, oldUpstream, newName);
     } catch (e: unknown) {
       showGitError(`rename-branch:${meta.name}`, e);
-    }
-    await this.refresh();
-  }
-
-  private async pushSingleRepo(meta: RepoMeta): Promise<void> {
-    const repo = this.manager.getRepo(meta.id);
-    if (!repo) return;
-    try {
-      await repo.push();
-      const msg = `[${meta.name}]: pushed successfully.`;
-      vscode.window.showInformationMessage(vscode.l10n.t('[{0}]: pushed successfully.', meta.name));
-      logInfo(`push:${meta.name}`, msg);
-    } catch (e: unknown) {
-      showGitError(`push:${meta.name}`, e);
     }
     await this.refresh();
   }
