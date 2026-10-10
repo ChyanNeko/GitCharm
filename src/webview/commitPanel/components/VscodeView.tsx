@@ -5,7 +5,6 @@ import type { IconThemeData } from '../../../host/types/messages';
 import { Codicon } from '../../shared/Codicon';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
 import { SingleRepoHeader } from './ProjectGroup';
-import { RepoSyncActions } from './RepoSyncActions';
 import { BranchSelector } from './BranchSelector';
 import { GenericFileTree } from '../../shared/GenericFileTree';
 import * as l10n from '@vscode/l10n';
@@ -34,8 +33,6 @@ interface Props {
   onUnstageAll: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, staged: boolean) => void;
   onBranchClick: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCounts: Record<string, number>;
   onOpenStagedChanges: (repoId: string) => void;
   onOpenUnstagedChanges: (repoId: string) => void;
@@ -105,8 +102,6 @@ interface RepoSubGroupProps {
   onRepoContextMenu: (e: React.MouseEvent) => void;
   onBranchClick: (repoId: string) => void;
   onOpenChanges: () => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCount: number;
   repoSelected?: boolean;
   onToggleRepoSelection?: () => void;
@@ -120,7 +115,7 @@ interface RepoSubGroupProps {
   scrollRef?: React.RefObject<HTMLDivElement | null>;
 }
 
-function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, onPull, onPush, outgoingCount, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles, scrollRef }: RepoSubGroupProps) {
+function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewMode, selectedFile, ctxFile, iconTheme, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed, activeFolderPath, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge, onStageFiles, onUnstageFiles, onRepoContextMenu, onBranchClick, onOpenChanges, outgoingCount, isFirst = false, isLast = false, repoSelected, onToggleRepoSelection, singleRepo, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onMultiSelect, multiSelectedFiles, scrollRef }: RepoSubGroupProps) {
   const repoId = repoStatus.repoId;
   const collapseKey = `vscode-repo-${staged ? 'staged' : 'unstaged'}:${repoId}`;
   const dirKeys = useMemo(() => {
@@ -193,7 +188,6 @@ function VscodeRepoGroup({ repoStatus, repoName, repoColor, staged, files, viewM
             <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
           </div>
           <div style={repoActionsStyle}>
-            <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
             {!isEmpty && viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
               <InlineIconBtn
                 icon={expanded ? 'collapse-all' : 'expand-all'}
@@ -332,7 +326,7 @@ export function VscodeView({
   isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge,
   onStageFiles, onUnstageFiles, onStageAll, onUnstageAll,
-  onRepoContextMenu, onBranchClick, onOpenStagedChanges, onOpenUnstagedChanges, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath,
+  onRepoContextMenu, onBranchClick, onOpenStagedChanges, onOpenUnstagedChanges, outgoingCounts, iconTheme, activeFolderPath,
   selectedRepos, onToggleRepoSelection, onOpenAllChanges,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
@@ -377,8 +371,6 @@ export function VscodeView({
           onBranchClick={onBranchClick}
           onRepoContextMenu={(e, rid) => onRepoContextMenu(e, rid, true)}
           onOpenAllChanges={onOpenAllChanges ?? (() => {})}
-          onPull={onPull}
-          onPush={onPush}
           outgoingCount={outgoingCounts[singleRepoStatus.repoId] ?? 0}
           hideOpenChanges
         />
@@ -432,8 +424,6 @@ export function VscodeView({
               onRepoContextMenu={e => onRepoContextMenu(e, r.repoId, true)}
               onBranchClick={onBranchClick}
               onOpenChanges={() => onOpenStagedChanges(r.repoId)}
-              onPull={onPull}
-              onPush={onPush}
               outgoingCount={outgoingCounts[r.repoId] ?? 0}
               repoSelected={selectedRepos.has(r.repoId)}
               onToggleRepoSelection={() => onToggleRepoSelection(r.repoId)}
@@ -503,8 +493,6 @@ export function VscodeView({
               onRepoContextMenu={e => onRepoContextMenu(e, r.repoId, false)}
               onBranchClick={onBranchClick}
               onOpenChanges={() => onOpenUnstagedChanges(r.repoId)}
-              onPull={onPull}
-              onPush={onPush}
               outgoingCount={outgoingCounts[r.repoId] ?? 0}
               singleRepo={isSingleRepo}
               isSubmodule={meta?.isSubmodule}

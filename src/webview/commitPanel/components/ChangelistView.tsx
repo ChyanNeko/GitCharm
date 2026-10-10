@@ -29,8 +29,6 @@ interface Props {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCounts: Record<string, number>;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
@@ -45,7 +43,7 @@ export function ChangelistView({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
+  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const metaMap = new Map(repoMetas.map(m => [m.id, m]));
@@ -122,8 +120,6 @@ export function ChangelistView({
           onBranchClick={onBranchClick}
           onRepoContextMenu={(e, rid) => onRepoContextMenu(e, rid)}
           onOpenAllChanges={() => {}}
-          onPull={onPull}
-          onPush={onPush}
           outgoingCount={outgoingCounts[singleRepoStatus.repoId] ?? 0}
           hideOpenChanges
         />
@@ -205,8 +201,6 @@ export function ChangelistView({
             onRepoContextMenu={onRepoContextMenu}
             onOpenChanges={onOpenChanges}
             onBranchClick={onBranchClick}
-            onPull={onPull}
-            onPush={onPush}
             outgoingCounts={outgoingCounts}
             iconTheme={iconTheme}
             activeFolderPath={activeFolderPath}

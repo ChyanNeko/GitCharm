@@ -529,7 +529,6 @@
   "{0} files selected": "{0} files selected",
   "Rollback files": "Rollback files",
   "Rollback 1 file": "Rollback 1 file",
-  "Preview Push": "Preview Push",
   "View in Git Log": "View in Git Log",
   "Edit Commit Message…": "Edit Commit Message…",
   "Revert {0} commits": "Revert {0} commits",

@@ -7,7 +7,6 @@ import { FileTree } from './FileTree';
 import { Codicon } from '../../shared/Codicon';
 import { OpenChangesBtn } from '../../shared/OpenChangesBtn';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
-import { RepoSyncActions } from './RepoSyncActions';
 import { BranchSelector } from './BranchSelector';
 import * as l10n from '@vscode/l10n';
 
@@ -50,8 +49,6 @@ interface Props {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCounts: Record<string, number>;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
@@ -66,7 +63,7 @@ export function ChangelistGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
+  onOpenFile, onRollback, onResolveMerge, onHeaderContextMenu, onRepoContextMenu, onOpenChanges, onBranchClick, outgoingCounts, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const collapseKey = `cl:${changelist.id}`;
@@ -163,8 +160,6 @@ export function ChangelistGroup({
                 onRepoContextMenu={onRepoContextMenu}
                 onOpenChanges={onOpenChanges}
                 onBranchClick={onBranchClick}
-                onPull={onPull}
-                onPush={onPush}
                 outgoingCount={outgoingCounts[group.repoId] ?? 0}
                 iconTheme={iconTheme}
                 activeFolderPath={activeFolderPath}
@@ -213,8 +208,6 @@ interface RepoSubGroupProps {
   onRepoContextMenu: (e: React.MouseEvent, repoId: string, changelistId?: string) => void;
   onOpenChanges: (repoId: string) => void;
   onBranchClick: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCount: number;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
@@ -234,7 +227,7 @@ function RepoSubGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu,
-  onOpenFile, onRollback, onResolveMerge, onRepoContextMenu, onOpenChanges, onBranchClick, onPull, onPush, outgoingCount, iconTheme, activeFolderPath, changelistId, ctxFile, isFirst = false, isLast = false, defaultCollapsed = false,
+  onOpenFile, onRollback, onResolveMerge, onRepoContextMenu, onOpenChanges, onBranchClick, outgoingCount, iconTheme, activeFolderPath, changelistId, ctxFile, isFirst = false, isLast = false, defaultCollapsed = false,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: RepoSubGroupProps) {
   const collapseKey = `cl-repo:${changelistId ?? ''}:${repoId}`;
@@ -298,7 +291,6 @@ function RepoSubGroup({
               <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
             )}
             <div style={styles.repoRightGroup}>
-              <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
               {viewMode === 'tree' && totalFiles > 0 && !collapsed && dirKeys.length > 0 && (
                 <InlineIconBtn
                   icon={expanded ? 'collapse-all' : 'expand-all'}

@@ -457,7 +457,6 @@
   "Changed Files": "变更文件",
   "Loading files…": "正在加载文件…",
   "No files found": "未找到文件",
-  "Preview Push": "预览推送",
   "Checkout a branch before pushing": "请先检出分支再推送",
   "Push preview is out of date. Review the refreshed commits and try again.": "推送预览已过期。请检查刷新后的提交，然后重试。",
   "{0}: 1 commit to push": "{0}：有 1 个待推送提交",

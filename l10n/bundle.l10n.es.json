@@ -457,7 +457,6 @@
   "Changed Files": "Archivos modificados",
   "Loading files…": "Cargando archivos…",
   "No files found": "No se encontraron archivos",
-  "Preview Push": "Previsualizar push",
   "Checkout a branch before pushing": "Cambia a una rama antes de hacer push",
   "Push preview is out of date. Review the refreshed commits and try again.": "La vista previa del push está desactualizada. Revisa los commits actualizados e inténtalo de nuevo.",
   "{0}: 1 commit to push": "{0}: 1 commit pendiente de push",

@@ -1583,8 +1583,6 @@ function App() {
                 onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
                 onOpenStagedChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid, section: 'staged' })}
                 onOpenUnstagedChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid, section: 'unstaged' })}
-                onPull={doPull}
-                onPush={openPushPreview}
                 outgoingCounts={outgoingCounts}
                 iconTheme={store.iconTheme}
                 activeFolderPath={activeFolderPath}
@@ -1641,8 +1639,6 @@ function App() {
                 onRepoContextMenu={(e, rid, clId) => setRepoCtxMenu({ x: e.clientX, y: e.clientY, repoId: rid, changelistId: clId })}
                 onOpenChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid } satisfies CommitToHostMsg)}
                 onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
-                onPull={doPull}
-                onPush={openPushPreview}
                 outgoingCounts={outgoingCounts}
                 iconTheme={store.iconTheme}
                 activeFolderPath={activeFolderPath}
@@ -1735,8 +1731,6 @@ function App() {
                       onBranchClick={rid => send({ type: 'COMMIT_SHOW_BRANCH_MENU', repoId: rid })}
                       onRepoContextMenu={(e, rid) => setRepoCtxMenu({ x: e.clientX, y: e.clientY, repoId: rid })}
                       onOpenAllChanges={rid => send({ type: 'COMMIT_OPEN_ALL_CHANGES', repoId: rid } satisfies CommitToHostMsg)}
-                      onPull={doPull}
-                      onPush={openPushPreview}
                       outgoingCount={outgoingCounts[repoId] ?? 0}
                       iconTheme={store.iconTheme}
                       activeFolderPath={activeFolderPath}

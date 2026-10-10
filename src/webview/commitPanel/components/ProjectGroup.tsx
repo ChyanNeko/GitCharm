@@ -6,7 +6,6 @@ import { FileTree } from './FileTree';
 import { Codicon } from '../../shared/Codicon';
 import { OpenChangesBtn } from '../../shared/OpenChangesBtn';
 import { InlineIconBtn } from '../../shared/InlineIconBtn';
-import { RepoSyncActions } from './RepoSyncActions';
 import { BranchSelector } from './BranchSelector';
 import * as l10n from '@vscode/l10n';
 
@@ -41,8 +40,6 @@ interface Props {
   onBranchClick: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string) => void;
   onOpenAllChanges: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCount: number;
   iconTheme?: IconThemeData | null;
   activeFolderPath?: string | null;
@@ -58,7 +55,7 @@ export function ProjectGroup({
   selectedFile, viewMode,
   isFileSelected, isCollapsed, toggleCollapsed, hasExpandedDirs, setDirsCollapsed,
   onToggleFile, onSetFiles, onSelectFile, onContextMenu, onFolderContextMenu, onOpenFile, onRollback, onResolveMerge,
-  onBranchClick, onRepoContextMenu, onOpenAllChanges, onPull, onPush, outgoingCount, iconTheme, activeFolderPath, ctxFile,
+  onBranchClick, onRepoContextMenu, onOpenAllChanges, outgoingCount, iconTheme, activeFolderPath, ctxFile,
   onMultiSelect, multiSelectedFiles, scrollRef,
 }: Props) {
   const repoId = repoStatus.repoId;
@@ -132,7 +129,6 @@ export function ProjectGroup({
           )}
           <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
           <div style={styles.rightGroup}>
-            <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
             {totalFiles > 0 && viewMode === 'tree' && !collapsed && dirKeys.length > 0 && (
               <InlineIconBtn
                 icon={expanded ? 'collapse-all' : 'expand-all'}
@@ -197,13 +193,11 @@ interface SingleRepoHeaderProps {
   onBranchClick: (repoId: string) => void;
   onRepoContextMenu: (e: React.MouseEvent, repoId: string) => void;
   onOpenAllChanges: (repoId: string) => void;
-  onPull: (repoId: string) => void;
-  onPush: (repoId: string) => void;
   outgoingCount: number;
   hideOpenChanges?: boolean;
 }
 
-export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onBranchClick, onRepoContextMenu, onOpenAllChanges, onPull, onPush, outgoingCount, hideOpenChanges }: SingleRepoHeaderProps) {
+export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule, submodulePath, isWorktree, mainWorktreePath, onBranchClick, onRepoContextMenu, onOpenAllChanges, outgoingCount, hideOpenChanges }: SingleRepoHeaderProps) {
   const repoId = repoStatus.repoId;
   const [hovered, setHovered] = useState(false);
 
@@ -226,7 +220,6 @@ export function SingleRepoHeader({ repoStatus, repoName, repoColor, isSubmodule,
         )}
         <BranchSelector repoStatus={repoStatus} isWorktree={isWorktree} outgoingCount={outgoingCount} onClick={onBranchClick} />
         <div style={styles.rightGroup}>
-          <RepoSyncActions repoId={repoId} visible={hovered} onPull={onPull} onPush={onPush} />
           {!hideOpenChanges && <OpenChangesBtn visible={hovered} onClick={e => { e.stopPropagation(); onOpenAllChanges(repoId); }} />}
         </div>
       </div>
