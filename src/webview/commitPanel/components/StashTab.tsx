@@ -132,7 +132,7 @@ function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, o
         onMouseEnter={() => setHovered(true)}
         onMouseLeave={() => setHovered(false)}
         onContextMenu={e => { e.preventDefault(); setCtxMenu({ x: e.clientX, y: e.clientY }); }}
-        onDoubleClick={() => onPop(repoId, entry.ref)}
+        onDoubleClick={() => onPop(repoId, entry.hash)}
         title={l10n.t('{0} — double-click to pop', entry.ref)}
       >
         <button style={row.chevronBtn} onClick={e => { e.stopPropagation(); setExpanded(v => !v); }}>
@@ -162,9 +162,9 @@ function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, o
         </div>
         {hovered && (
           <div style={row.actions}>
-            <InlineIconBtn icon="git-stash-pop" title={l10n.t('Pop (apply and drop)')} visible onClick={e => { e.stopPropagation(); onPop(repoId, entry.ref); }} />
-            <InlineIconBtn icon="git-stash-apply" title={l10n.t('Apply (keep stash)')} visible onClick={e => { e.stopPropagation(); onApply(repoId, entry.ref); }} />
-            <InlineIconBtn icon="trash" title={l10n.t('Drop stash')} visible danger onClick={e => { e.stopPropagation(); onDrop(repoId, entry.ref); }} />
+            <InlineIconBtn icon="git-stash-pop" title={l10n.t('Pop (apply and drop)')} visible onClick={e => { e.stopPropagation(); onPop(repoId, entry.hash); }} />
+            <InlineIconBtn icon="git-stash-apply" title={l10n.t('Apply (keep stash)')} visible onClick={e => { e.stopPropagation(); onApply(repoId, entry.hash); }} />
+            <InlineIconBtn icon="trash" title={l10n.t('Drop stash')} visible danger onClick={e => { e.stopPropagation(); onDrop(repoId, entry.hash); }} />
           </div>
         )}
       </div>
@@ -183,7 +183,7 @@ function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, o
               statusLetter={statusLetter}
               isDirOpen={dirPath => openDirs.has(dirPath)}
               toggleDir={toggleDir}
-              onOpenFile={f => onOpenFileDiff(repoId, entry.ref, f.path)}
+              onOpenFile={f => onOpenFileDiff(repoId, entry.hash, f.path)}
             />
           )}
         </div>
@@ -195,10 +195,10 @@ function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, o
           items={stashCtxItems()}
           onSelect={id => {
             setCtxMenu(null);
-            if (id === 'pop')    onPop(repoId, entry.ref);
-            if (id === 'apply')  onApply(repoId, entry.ref);
-            if (id === 'rename') onRename(repoId, entry.ref, entry.message);
-            if (id === 'drop')   onDrop(repoId, entry.ref);
+            if (id === 'pop')    onPop(repoId, entry.hash);
+            if (id === 'apply')  onApply(repoId, entry.hash);
+            if (id === 'rename') onRename(repoId, entry.hash, entry.message);
+            if (id === 'drop')   onDrop(repoId, entry.hash);
           }}
           onClose={() => setCtxMenu(null)}
         />
@@ -253,14 +253,14 @@ export function StashTab({
         </div>
       )}
       {!sectionCollapsed && (
-        loading ? (
+        loading && stashes.length === 0 ? (
           <div style={css.empty}>{l10n.t('Loading…')}</div>
         ) : stashes.length === 0 ? (
           <div style={css.empty}>{l10n.t('No stashes')}</div>
         ) : (
           stashes.map((entry, i) => (
             <StashRow
-              key={entry.ref}
+              key={entry.hash}
               entry={entry}
               repoId={repoId}
               viewMode={viewMode}

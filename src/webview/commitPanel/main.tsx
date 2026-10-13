@@ -264,6 +264,8 @@ function App() {
 
   // ── Tab ───────────────────────────────────────────────────────────────────
   const [activeTab, setActiveTab] = useState<TabId>('changes');
+  const activeTabRef = useRef(activeTab);
+  activeTabRef.current = activeTab;
   const [tabBarCollapsed, setTabBarCollapsed] = useState(false);
   const [tabMenu, setTabMenu] = useState<{ x: number; y: number; width: number } | null>(null);
   const tabDropdownBtnRef = useRef<HTMLButtonElement>(null);
@@ -279,6 +281,8 @@ function App() {
   const [stashMap, setStashMap]       = useState<Record<string, StashEntry[]>>({});
   const [stashLoading, setStashLoading] = useState<Record<string, boolean>>({});
   const [stashError, setStashError]   = useState<Record<string, string | null>>({});
+  const stashRequestsRef = useRef<Map<string, string>>(new Map());
+  const staleStashReposRef = useRef<Set<string>>(new Set());
 
   // ── Worktree state ────────────────────────────────────────────────────────
   const [worktreeRepos, setWorktreeRepos] = useState<Array<{ repoId: string; repoName: string; repoColor: string; worktrees: WorktreeEntry[]; isLinkedWorktree: boolean }>>([]);
@@ -346,6 +350,12 @@ function App() {
     setStashMap(pruneRecord);
     setStashLoading(pruneRecord);
     setStashError(pruneRecord);
+    for (const repoId of stashRequestsRef.current.keys()) {
+      if (!currentRepoIds.has(repoId)) stashRequestsRef.current.delete(repoId);
+    }
+    for (const repoId of staleStashReposRef.current) {
+      if (!currentRepoIds.has(repoId)) staleStashReposRef.current.delete(repoId);
+    }
     setUnpushedMap(pruneRecord);
     setDetachedWarnings(pruneRecord);
     setWorktreeRepos(prev => prev.filter(r => currentRepoIds.has(r.repoId)));
@@ -469,6 +479,17 @@ function App() {
     getVsCodeApi().postMessage(msg);
   }, []);
 
+  const requestStashList = useCallback((repoId: string) => {
+    // Coalesce refreshes while preserving invalidations received during a request.
+    if (stashRequestsRef.current.has(repoId)) return;
+    if (!useCommitStore.getState().status?.repos.some(repo => repo.repoId === repoId)) return;
+    const requestId = generateId();
+    stashRequestsRef.current.set(repoId, requestId);
+    staleStashReposRef.current.delete(repoId);
+    setStashLoading(prev => ({ ...prev, [repoId]: true }));
+    send({ type: 'STASH_LIST', requestId, repoId });
+  }, [send]);
+
   const updateViewAndSort = useCallback((partial: Partial<ViewAndSortUserPrefs>) => {
     store.setViewAndSort(partial);
     send({ type: 'COMMIT_SET_VIEW_SORT_SETTINGS', ...partial });
@@ -506,6 +527,12 @@ function App() {
         case 'COMMIT_STATUS_UPDATE': {
           const receivedAt = performance.now();
           store.setStatus(msg.repos, msg.status, msg.iconTheme, msg.defaultCommitAction, msg.defaultSaveAction, msg.hasWorkspaceFolder, msg.aiEnabled, msg.activeProfile);
+          // Pull can create or retain a recovery stash without a STASH_OP_RESULT.
+          // Refresh visible lists and invalidate cached lists until the tab opens.
+          for (const repo of msg.status.repos) {
+            staleStashReposRef.current.add(repo.repoId);
+            if (activeTabRef.current === 'stash') requestStashList(repo.repoId);
+          }
           if (Array.isArray(msg.status.repos) && useCommitStore.getState().changesViewMode === 'vscode') {
             const prevCounts = prevUnstagedCountsRef.current;
             let hasNewChanges = false;
@@ -610,8 +637,18 @@ function App() {
           break;
 
         case 'STASH_LIST_RESULT':
+          if (stashRequestsRef.current.get(msg.repoId) !== msg.requestId) break;
+          stashRequestsRef.current.delete(msg.repoId);
+          if (!useCommitStore.getState().status?.repos.some(repo => repo.repoId === msg.repoId)) break;
+          // A status update during this request makes its snapshot obsolete.
+          if (staleStashReposRef.current.has(msg.repoId)) {
+            if (activeTabRef.current === 'stash') requestStashList(msg.repoId);
+            else setStashLoading(prev => ({ ...prev, [msg.repoId]: false }));
+            break;
+          }
           setStashLoading(prev => ({ ...prev, [msg.repoId]: false }));
           if (msg.error) {
+            staleStashReposRef.current.add(msg.repoId);
             setStashError(prev => ({ ...prev, [msg.repoId]: msg.error ?? null }));
           } else {
             setStashMap(prev => ({ ...prev, [msg.repoId]: msg.stashes }));
@@ -622,11 +659,10 @@ function App() {
         case 'STASH_OP_RESULT':
           if (!msg.ok) {
             if (msg.error && msg.error !== 'Cancelled') notifyError(msg.error);
-          } else {
-            // Refresh stash list for affected repo
-            setStashLoading(prev => ({ ...prev, [msg.repoId]: true }));
-            getVsCodeApi().postMessage({ type: 'STASH_LIST', requestId: generateId(), repoId: msg.repoId } satisfies CommitToHostMsg);
           }
+          // Failed operations can also leave a recovery stash or apply conflicts.
+          staleStashReposRef.current.add(msg.repoId);
+          requestStashList(msg.repoId);
           break;
 
         case 'PUSH_UNPUSHED_RESULT':
@@ -709,7 +745,11 @@ function App() {
           break;
 
         case 'COMMIT_SWITCH_TAB':
+          activeTabRef.current = msg.tab;
           setActiveTab(msg.tab);
+          if (msg.tab === 'stash') {
+            (useCommitStore.getState().status?.repos ?? []).forEach(r => requestStashList(r.repoId));
+          }
           if (msg.tab === 'push') repos.forEach(r => requestUnpushedCommits(r.repoId));
           if (msg.tab === 'pullrequests') requestPullRequestList();
           break;
@@ -765,11 +805,6 @@ function App() {
   }, [send]);
 
   // ── Stash callbacks ───────────────────────────────────────────────────────
-
-  const requestStashList = useCallback((repoId: string) => {
-    setStashLoading(prev => ({ ...prev, [repoId]: true }));
-    send({ type: 'STASH_LIST', requestId: generateId(), repoId });
-  }, [send]);
 
   const handleStashApply = useCallback((repoId: string, stashRef: string) => {
     send({ type: 'STASH_APPLY', requestId: generateId(), repoId, stashRef });
@@ -1404,11 +1439,14 @@ function App() {
           badge: tab === 'changes' ? totalChanges : tab === 'push' ? totalToPush : tab === 'pullrequests' ? totalPullRequests : 0,
         });
         const selectTab = (tab: TabId) => {
+          activeTabRef.current = tab;
           setActiveTab(tab);
           // Skip refetching data that's already loaded — avoids a jarring loading flash every time the
           // tab is reopened; an explicit refresh (per-tab or per-repo) stays available for real refetches.
           if (tab === 'shelf') repos.forEach(r => { if (!(r.repoId in shelveMap)) requestShelveList(r.repoId); });
-          if (tab === 'stash') repos.forEach(r => { if (!(r.repoId in stashMap)) requestStashList(r.repoId); });
+          if (tab === 'stash') repos.forEach(r => {
+            if (!(r.repoId in stashMap) || staleStashReposRef.current.has(r.repoId)) requestStashList(r.repoId);
+          });
           if (tab === 'push') repos.forEach(r => requestUnpushedCommits(r.repoId));
           if (tab === 'worktree' && worktreeRepos.length === 0) requestWorktreeList();
           if (tab === 'pullrequests' && pullRequestRepos.length === 0) requestPullRequestList();

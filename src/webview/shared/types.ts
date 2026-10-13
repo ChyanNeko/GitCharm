@@ -70,6 +70,7 @@ export interface CommitNode {
   incoming?: boolean;
   isStash?: boolean;
   stashRef?: string;
+  stashHash?: string;
   stashBranch?: string;
   stashFiles?: Array<{ path: string; status: string; added?: number; removed?: number }>;
 }

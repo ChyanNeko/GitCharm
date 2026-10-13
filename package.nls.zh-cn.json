@@ -95,6 +95,7 @@
   "config.changesViewMode.enum.changelists": "按更改列表分组显示文件，类似 PhpStorm",
   "config.changesViewMode.enum.vscode": "像原生 VS Code 一样显示“已暂存的更改”/“更改”部分，并提供内联暂存/取消暂存按钮",
   "config.promptAddUntrackedToGit.description": "检测到新的未跟踪文件时显示提示，询问是否将其添加到 Git。",
+  "config.autoStashOnPull.description": "在拉取或更新项目之前自动储藏本地更改，完成后恢复，并仅在更新和恢复都成功时删除临时储藏。",
   "config.defaultCommitAction.description": "提交面板中提交按钮的默认操作。",
   "config.defaultCommitAction.enum.commit": "主按钮仅提交，不推送",
   "config.defaultCommitAction.enum.commitAndPush": "主按钮提交并立即推送",

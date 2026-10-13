@@ -1044,15 +1044,20 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
             const results = await this.manager.pullAll();
             const failed = results.filter(r => !r.ok);
             if (failed.length > 0) {
+              const names = new Map(this.manager.getRepoMetas().map(meta => [meta.id, meta.name]));
+              const details = failed.map(r => `${names.get(r.repoId) ?? r.repoId}: ${r.message}`).join('; ');
               for (const r of failed) {
-                logError('pull-all', `${r.repoId}: pull failed`);
+                logError('pull-all', `${r.repoId}: ${r.message}`);
               }
-              notifyWithLogAction('warning', plural(failed.length, vscode.l10n.t('1 pull failed'), vscode.l10n.t('{0} pulls failed', failed.length)));
+              notifyWithLogAction('warning', vscode.l10n.t('{0} updated, {1} failed: {2}', results.length - failed.length, failed.length, details));
             } else {
               logInfo('pull-all', `Pulled ${results.length} ${results.length === 1 ? 'repository' : 'repositories'}`);
             }
           }
         );
+        const pullStatus = await this.manager.getAllStatusesFresh();
+        this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status: pullStatus });
+        this.postChangelistsUpdate(pullStatus);
         break;
       }
 
@@ -1068,6 +1073,9 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
         } catch (e: unknown) {
           logError('pull', formatGitError(e), getRawErrorDetail(e));
           this.post({ type: 'COMMIT_OP_RESULT', requestId: msg.requestId, ok: false, error: formatGitError(e) });
+          const pullStatus = await this.manager.getAllStatusesFresh();
+          this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status: pullStatus });
+          this.postChangelistsUpdate(pullStatus);
         }
         break;
       }

@@ -95,6 +95,7 @@
   "config.changesViewMode.enum.changelists": "Mostrar los archivos agrupados por listas de cambios, como en PhpStorm",
   "config.changesViewMode.enum.vscode": "Mostrar secciones Cambios preparados / Cambios como en VS Code, con botones en línea para preparar y quitar de preparados",
   "config.promptAddUntrackedToGit.description": "Preguntar si añadir a Git los archivos nuevos sin seguimiento cuando se detecten.",
+  "config.autoStashOnPull.description": "Guardar automáticamente los cambios locales en un stash antes de hacer pull o actualizar el proyecto, restaurarlos después y eliminar el stash temporal solo cuando la actualización y la restauración se completen correctamente.",
   "config.defaultCommitAction.description": "Acción predeterminada del botón de commit en el panel Commit.",
   "config.defaultCommitAction.enum.commit": "El botón principal hace commit sin push",
   "config.defaultCommitAction.enum.commitAndPush": "El botón principal hace commit y push inmediatamente",

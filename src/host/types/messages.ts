@@ -52,6 +52,7 @@ export interface ShelveEntry {
 // ─── Stash (native git stash) ────────────────────────────────────────────────
 
 export interface StashEntry {
+  hash: string;        // immutable full hash; numeric stash refs can move
   ref: string;         // e.g. "stash@{0}"
   index: number;       // 0, 1, 2...
   message: string;     // description

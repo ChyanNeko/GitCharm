@@ -1147,6 +1147,13 @@
             "default": false,
             "description": "%config.promptAddUntrackedToGit.description%"
           },
+          "gitchyan.autoStashOnPull": {
+            "order": 26,
+            "type": "boolean",
+            "default": true,
+            "scope": "resource",
+            "description": "%config.autoStashOnPull.description%"
+          },
           "gitchyan.defaultCommitAction": {
             "order": 20,
             "type": "string",

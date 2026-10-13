@@ -1111,8 +1111,6 @@
   "Committing {0} repositories": "Commit de {0} dépôts en cours",
   "{0}: not found": "{0} : introuvable",
   "Pulling all repositories": "Pull de tous les dépôts en cours",
-  "1 pull failed": "Échec d'1 pull",
-  "{0} pulls failed": "Échec de {0} pulls",
   "Syncing": "Synchronisation en cours",
   "Pull failed: {0}": "Échec du pull : {0}",
   "Push failed: {0}": "Échec du push : {0}",
@@ -1326,5 +1324,18 @@
   "{0} did not answer within {1} seconds": "{0} n'a pas répondu dans les {1} secondes",
   "{0} exited with code {1}": "{0} s'est terminé avec le code {1}",
   "File path…": "Chemin du fichier…",
-  "Repository-relative file path": "Chemin du fichier relatif au dépôt"
+  "Repository-relative file path": "Chemin du fichier relatif au dépôt",
+  "An update is already in progress for this repository.": "Une mise à jour est déjà en cours pour ce dépôt.",
+  "Resolve conflicts and finish or abort the current Git operation before updating.": "Résolvez les conflits et terminez ou annulez l’opération Git en cours avant de mettre à jour.",
+  "Saving local changes failed. Update was canceled; recovery stash {0} was kept. {1}": "Impossible de sauvegarder les modifications locales. La mise à jour a été annulée ; le stash {0} a été conservé pour permettre leur récupération. {1}",
+  "Update failed. Local changes are saved in stash {0}; restore them from the Stash tab after resolving or aborting the update. {1}": "La mise à jour a échoué. Les modifications locales sont sauvegardées dans le stash {0} ; restaurez-les depuis l’onglet Stash après avoir résolu les conflits ou annulé la mise à jour. {1}",
+  "Update failed and restoring local changes failed. Recovery stash {0} was kept; use the Stash tab to recover it. {1}": "La mise à jour et la restauration des modifications locales ont échoué. Le stash {0} a été conservé pour permettre leur récupération ; utilisez l’onglet Stash pour restaurer les modifications. {1}",
+  "Update failed. Local changes were restored; recovery stash {0} was kept. {1}": "La mise à jour a échoué. Les modifications locales ont été restaurées ; le stash {0} a été conservé pour permettre leur récupération. {1}",
+  "Update completed, but restoring local changes failed. Recovery stash {0} was kept; resolve conflicts or recover it from the Stash tab. {1}": "La mise à jour est terminée, mais la restauration des modifications locales a échoué. Le stash {0} a été conservé pour permettre leur récupération ; résolvez les conflits ou restaurez les modifications depuis l’onglet Stash. {1}",
+  "[{0}]: Update completed and local changes were restored, but recovery stash {1} was kept.": "[{0}] : La mise à jour est terminée et les modifications locales ont été restaurées, mais le stash {1} a été conservé pour permettre leur récupération.",
+  "Update was canceled because the recovery stash could not be identified. Local changes were saved with stash description \"{0}\"; inspect the Stash tab before retrying. {1}": "La mise à jour a été annulée car le stash de récupération n’a pas pu être identifié. Les modifications locales ont été sauvegardées dans un stash portant la description « {0} » ; vérifiez l’onglet Stash avant de réessayer. {1}",
+  "Stash cleanup failed after another process changed the stash list. Recover stash {0} with \"git stash store {0}\". {1}": "Le nettoyage des stashes a échoué après qu’un autre processus a modifié leur liste. Récupérez le stash {0} avec « git stash store {0} ». {1}",
+  "Another stash or update operation is in progress for this repository. Wait for it to finish and refresh the Stash tab before retrying.": "Une autre opération de stash ou de mise à jour est en cours pour ce dépôt. Attendez qu’elle se termine et actualisez l’onglet Stash avant de réessayer.",
+  "This stash is no longer available. Refresh the Stash tab and retry.": "Ce stash n’est plus disponible. Actualisez l’onglet Stash et réessayez.",
+  "The stash list changed during cleanup. Refresh the Stash tab and retry.": "La liste des stashes a changé pendant le nettoyage. Actualisez l’onglet Stash et réessayez."
 }

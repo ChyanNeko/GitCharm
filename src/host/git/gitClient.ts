@@ -9,6 +9,10 @@ const GIT_ENV: Record<string, string> = {
   ...Object.fromEntries(Object.entries(process.env).filter((e): e is [string, string] => e[1] !== undefined)),
   LC_ALL: 'en_US.UTF-8',
   LANG: 'en_US.UTF-8',
+  // Background status/diff reads must not lock the index to refresh its cache:
+  // VS Code's Git API can be pulling or creating an autostash at the same time.
+  // Required writes (stage, commit, stash, etc.) still take their normal locks.
+  GIT_OPTIONAL_LOCKS: '0',
 };
 
 // simple-git vets any env passed via .env() and rejects variables like GIT_SSH_COMMAND or

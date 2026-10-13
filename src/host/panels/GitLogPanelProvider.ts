@@ -808,6 +808,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
                 refs: [],
                 isStash: true as const,
                 stashRef: s.ref,
+                stashHash: s.hash,
                 stashBranch: s.branch,
                 stashFiles: s.files,
               }));

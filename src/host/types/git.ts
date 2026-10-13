@@ -61,6 +61,7 @@ export interface CommitNode {
   graphLines?: GraphLine[];
   isStash?: boolean;
   stashRef?: string;    // e.g. "stash@{0}"
+  stashHash?: string;   // immutable identity for stash mutations
   stashBranch?: string; // branch the stash was created on
   stashFiles?: Array<{ path: string; status: string; added?: number; removed?: number }>;
 }

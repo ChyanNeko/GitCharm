@@ -90,6 +90,7 @@ function commitListsEqual(a: CommitNode[], b: CommitNode[]): boolean {
     if (x === y) continue;
     if (
       x.hash !== y.hash ||
+      x.stashHash !== y.stashHash ||
       x.repoId !== y.repoId ||
       x.message !== y.message ||
       x.committerDate !== y.committerDate ||

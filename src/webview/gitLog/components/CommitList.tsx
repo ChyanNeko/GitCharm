@@ -1419,7 +1419,7 @@ function CommitContextMenu({ commit, x, y, multiSelected, allCommits, currentBra
                   type: "LOG_STASH_POP",
                   requestId: generateId(),
                   repoId: commit.repoId,
-                  stashRef: commit.hash,
+                  stashRef: commit.stashHash ?? commit.hash,
                 })
               }
             >
@@ -1434,7 +1434,7 @@ function CommitContextMenu({ commit, x, y, multiSelected, allCommits, currentBra
                   type: "LOG_STASH_APPLY",
                   requestId: generateId(),
                   repoId: commit.repoId,
-                  stashRef: commit.hash,
+                  stashRef: commit.stashHash ?? commit.hash,
                 })
               }
             >
@@ -1453,7 +1453,7 @@ function CommitContextMenu({ commit, x, y, multiSelected, allCommits, currentBra
                   type: "LOG_STASH_DROP",
                   requestId: generateId(),
                   repoId: commit.repoId,
-                  stashRef: commit.hash,
+                  stashRef: commit.stashHash ?? commit.hash,
                 })
               }
             >

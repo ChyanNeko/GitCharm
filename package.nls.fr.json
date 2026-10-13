@@ -95,6 +95,7 @@
   "config.changesViewMode.enum.changelists": "Afficher les fichiers regroupés par listes de modifications, comme dans PhpStorm",
   "config.changesViewMode.enum.vscode": "Afficher les sections Modifications indexées / Modifications comme dans VS Code, avec des boutons d'indexation/désindexation en ligne",
   "config.promptAddUntrackedToGit.description": "Lorsque de nouveaux fichiers non suivis sont détectés, proposer de les ajouter à Git.",
+  "config.autoStashOnPull.description": "Mettre automatiquement les modifications locales en stash avant un pull ou une mise à jour du projet, les restaurer ensuite et supprimer le stash temporaire uniquement si la mise à jour et la restauration réussissent toutes les deux.",
   "config.defaultCommitAction.description": "Action par défaut du bouton de commit dans le panneau Commit.",
   "config.defaultCommitAction.enum.commit": "Le bouton principal commite sans pousser",
   "config.defaultCommitAction.enum.commitAndPush": "Le bouton principal commite et pousse immédiatement",

@@ -1111,8 +1111,6 @@
   "Committing {0} repositories": "正在提交 {0} 個儲存庫",
   "{0}: not found": "{0}：找不到",
   "Pulling all repositories": "正在拉取所有儲存庫",
-  "1 pull failed": "1 次拉取失敗",
-  "{0} pulls failed": "{0} 次拉取失敗",
   "Syncing": "正在同步",
   "Pull failed: {0}": "拉取失敗：{0}",
   "Push failed: {0}": "推送失敗：{0}",
@@ -1326,5 +1324,18 @@
   "{0} did not answer within {1} seconds": "{0} 未在 {1} 秒內回應",
   "{0} exited with code {1}": "{0} 已結束，代碼為 {1}",
   "File path…": "檔案路徑…",
-  "Repository-relative file path": "相對於儲存庫根目錄的檔案路徑"
+  "Repository-relative file path": "相對於儲存庫根目錄的檔案路徑",
+  "An update is already in progress for this repository.": "此儲存庫已有更新正在進行。",
+  "Resolve conflicts and finish or abort the current Git operation before updating.": "請先解決衝突，並完成或中止目前的 Git 操作，再進行更新。",
+  "Saving local changes failed. Update was canceled; recovery stash {0} was kept. {1}": "儲存本機變更失敗。更新已取消；用於還原的儲藏 {0} 已保留。{1}",
+  "Update failed. Local changes are saved in stash {0}; restore them from the Stash tab after resolving or aborting the update. {1}": "更新失敗。本機變更已儲存在儲藏 {0} 中；請在解決衝突或中止更新後，從「儲藏」索引標籤還原。{1}",
+  "Update failed and restoring local changes failed. Recovery stash {0} was kept; use the Stash tab to recover it. {1}": "更新失敗，且還原本機變更失敗。用於還原的儲藏 {0} 已保留；請從「儲藏」索引標籤還原變更。{1}",
+  "Update failed. Local changes were restored; recovery stash {0} was kept. {1}": "更新失敗。本機變更已還原；用於還原的儲藏 {0} 已保留。{1}",
+  "Update completed, but restoring local changes failed. Recovery stash {0} was kept; resolve conflicts or recover it from the Stash tab. {1}": "更新已完成，但還原本機變更失敗。用於還原的儲藏 {0} 已保留；請解決衝突，或從「儲藏」索引標籤還原變更。{1}",
+  "[{0}]: Update completed and local changes were restored, but recovery stash {1} was kept.": "[{0}]：更新已完成，本機變更已還原，但用於還原的儲藏 {1} 已保留。",
+  "Update was canceled because the recovery stash could not be identified. Local changes were saved with stash description \"{0}\"; inspect the Stash tab before retrying. {1}": "無法識別用於還原的儲藏，更新已取消。本機變更已儲存在描述為「{0}」的儲藏中；請在重試前檢查「儲藏」索引標籤。{1}",
+  "Stash cleanup failed after another process changed the stash list. Recover stash {0} with \"git stash store {0}\". {1}": "其他程序變更了儲藏清單，隨後清理儲藏失敗。請使用「git stash store {0}」還原儲藏 {0}。{1}",
+  "Another stash or update operation is in progress for this repository. Wait for it to finish and refresh the Stash tab before retrying.": "此儲存庫正在執行其他儲藏或更新操作。請等待操作完成，並重新整理「儲藏」索引標籤後再重試。",
+  "This stash is no longer available. Refresh the Stash tab and retry.": "此儲藏已無法使用。請重新整理「儲藏」索引標籤後重試。",
+  "The stash list changed during cleanup. Refresh the Stash tab and retry.": "清理期間儲藏清單發生了變更。請重新整理「儲藏」索引標籤後重試。"
 }

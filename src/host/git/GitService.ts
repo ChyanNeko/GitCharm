@@ -4,6 +4,7 @@ import { createGit } from './gitClient';
 import * as fs from 'fs';
 import * as os from 'os';
 import * as path from 'path';
+import { randomUUID } from 'crypto';
 import type {
   BranchInfo,
   CommitNode,
@@ -17,7 +18,8 @@ import type { StashEntry, UnpushedCommit } from '../types/messages';
 import { parseDiff, detectLanguage } from './DiffParser';
 import { getVscodeRepository } from './VscodeGitApi';
 import { ForcePushMode, Status, RefType } from './git.d';
-import { logDebug } from '../utils/Logger';
+import { logDebug, logError, logWarn, notifyWithLogAction } from '../utils/Logger';
+import { formatGitError, getRawErrorDetail } from '../utils/gitErrorUtils';
 
 const STATUS_MAP: Record<string, GitFileStatus> = {
   M: 'modified', A: 'added', D: 'deleted',
@@ -55,11 +57,17 @@ function stripCommitComments(raw: string): string {
   return raw.replace(/^\s*#.*$\n?/gm, '').trim();
 }
 
+class StashCleanupRecoveryError extends Error {}
+
 export class GitService {
+  // Linked worktrees share their stash reflog. Serialize our stash mutations
+  // across services as well as across panels within one repository.
+  private static readonly stashMutations = new Map<string, Promise<void>>();
   private git: SimpleGit;
   // Set immediately after a tag checkout, cleared when VS Code API confirms the update.
   private _pendingDetachedTag: string | undefined;
   private freshStatusSamples = 0;
+  private pullInProgress = false;
 
   constructor(public readonly repoId: string, public readonly rootPath: string) {
     this.git = createGit(rootPath);
@@ -1647,13 +1655,17 @@ export class GitService {
     const vsRepo = this.vsRepo();
     if (vsRepo && vsRepo.state.remotes.length > 0) {
       if (!vsRepo.state.HEAD?.upstream) return vscode.l10n.t('No remote tracking branch — skipped');
-      await vsRepo.pull();
-      return vscode.l10n.t('pulled');
+      return this.withPullAutoStash(async () => {
+        await vsRepo.pull();
+        return vscode.l10n.t('pulled');
+      });
     }
     const tracking = await this.git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).catch(() => '');
     if (!tracking.trim()) return vscode.l10n.t('No remote tracking branch — skipped');
-    const result = await this.git.pull();
-    return vscode.l10n.t('{0} files changed, {1} insertions, {2} deletions', result.summary.changes, result.summary.insertions, result.summary.deletions);
+    return this.withPullAutoStash(async () => {
+      const result = await this.git.pull();
+      return vscode.l10n.t('{0} files changed, {1} insertions, {2} deletions', result.summary.changes, result.summary.insertions, result.summary.deletions);
+    });
   }
 
   async pullRebase(): Promise<string> {
@@ -1661,14 +1673,199 @@ export class GitService {
     if (vsRepo && vsRepo.state.remotes.length > 0) {
       if (!vsRepo.state.HEAD?.upstream) return vscode.l10n.t('No remote tracking branch — skipped');
       const upstream = vsRepo.state.HEAD.upstream;
-      await vsRepo.fetch();
-      await vsRepo.rebase(`${upstream.remote}/${upstream.name}`);
-      return vscode.l10n.t('pulled (rebase)');
+      return this.withPullAutoStash(async () => {
+        await vsRepo.fetch();
+        await vsRepo.rebase(`${upstream.remote}/${upstream.name}`);
+        return vscode.l10n.t('pulled (rebase)');
+      });
     }
     const tracking = (await this.git.raw(['rev-parse', '--abbrev-ref', '--symbolic-full-name', '@{u}']).catch(() => '')).trim();
     if (!tracking) return vscode.l10n.t('No remote tracking branch — skipped');
-    await this.git.raw(['pull', '--rebase']);
-    return vscode.l10n.t('pulled (rebase)');
+    return this.withPullAutoStash(async () => {
+      await this.git.raw(['pull', '--rebase']);
+      return vscode.l10n.t('pulled (rebase)');
+    });
+  }
+
+  /** Save and restore this repository's local work independently of git.autoStash. */
+  private async withPullAutoStash<T>(update: () => Promise<T>): Promise<T> {
+    if (this.pullInProgress) throw new Error(vscode.l10n.t('An update is already in progress for this repository.'));
+    this.pullInProgress = true;
+    try {
+      return await this.withStashMutation(() => this.runPullAutoStash(update));
+    } finally {
+      this.pullInProgress = false;
+    }
+  }
+
+  private async runPullAutoStash<T>(update: () => Promise<T>): Promise<T> {
+    const enabled = vscode.workspace.getConfiguration('gitchyan', vscode.Uri.file(this.rootPath))
+      .get<boolean>('autoStashOnPull', true);
+    if (!enabled) return await update();
+
+    const status = await this.git.status();
+    if (status.conflicted.length > 0 || await this.hasUnfinishedGitOperation()) {
+      throw new Error(vscode.l10n.t('Resolve conflicts and finish or abort the current Git operation before updating.'));
+    }
+    if (status.files.length === 0) return await update();
+
+    // A unique marker identifies our stash even if another worktree pushes a
+    // stash meanwhile. Restore by immutable hash, never by stash@{0}.
+    const marker = `GitCharm: local changes before update (${randomUUID()})`;
+    try {
+      await this.git.raw(['stash', 'push', '--include-untracked', '-m', marker]);
+    } catch (error) {
+      // push may have saved the stash before failing to clean the worktree.
+      const saved = await this.findPullStash(marker).catch(() => undefined);
+      if (!saved) throw error;
+      throw this.pullAutoStashError(vscode.l10n.t(
+        'Saving local changes failed. Update was canceled; recovery stash {0} was kept. {1}',
+        saved.slice(0, 12), formatGitError(error, 1),
+      ), error);
+    }
+    let stashHash: string | undefined;
+    try {
+      stashHash = await this.findPullStash(marker);
+    } catch (error) {
+      throw this.pullAutoStashError(vscode.l10n.t(
+        'Update was canceled because the recovery stash could not be identified. Local changes were saved with stash description "{0}"; inspect the Stash tab before retrying. {1}',
+        marker, formatGitError(error, 1),
+      ), error);
+    }
+    // Dirty submodule worktrees are not stored in a parent stash. Their own
+    // GitService handles them; never apply/drop a pre-existing parent stash.
+    if (!stashHash) return await update();
+
+    let result: T;
+    try {
+      result = await update();
+    } catch (error) {
+      // Do not apply local work onto an unfinished merge/rebase. A failed
+      // status check also leaves the backup alone instead of guessing.
+      const canRestore = await this.canRestorePullStash().catch(() => false);
+      if (!canRestore) {
+        throw this.pullAutoStashError(vscode.l10n.t(
+          'Update failed. Local changes are saved in stash {0}; restore them from the Stash tab after resolving or aborting the update. {1}',
+          stashHash.slice(0, 12), formatGitError(error, 1),
+        ), error);
+      }
+      try {
+        await this.git.raw(['stash', 'apply', '--index', stashHash]);
+      } catch (restoreError) {
+        logError(`pull-auto-stash:${this.repoId}`, formatGitError(error), getRawErrorDetail(error));
+        throw this.pullAutoStashError(vscode.l10n.t(
+          'Update failed and restoring local changes failed. Recovery stash {0} was kept; use the Stash tab to recover it. {1}',
+          stashHash.slice(0, 12), formatGitError(restoreError, 1),
+        ), restoreError);
+      }
+      // The update failed: restore the working copy but keep a recovery copy.
+      throw this.pullAutoStashError(vscode.l10n.t(
+        'Update failed. Local changes were restored; recovery stash {0} was kept. {1}',
+        stashHash.slice(0, 12), formatGitError(error, 1),
+      ), error);
+    }
+
+    try {
+      // --index preserves the staged/unstaged split as well as file contents.
+      await this.git.raw(['stash', 'apply', '--index', stashHash]);
+    } catch (error) {
+      throw this.pullAutoStashError(vscode.l10n.t(
+        'Update completed, but restoring local changes failed. Recovery stash {0} was kept; resolve conflicts or recover it from the Stash tab. {1}',
+        stashHash.slice(0, 12), formatGitError(error, 1),
+      ), error);
+    }
+
+    try {
+      // Stash entries are shared by worktrees and their numeric refs can move.
+      // If another entry became newest, leave ours rather than drop that entry.
+      const newest = (await this.git.raw(['rev-parse', '--verify', 'refs/stash'])).trim();
+      if (newest !== stashHash) throw new Error('Stash list changed during update');
+      await this.dropStashByHash(stashHash);
+    } catch (error) {
+      if (error instanceof StashCleanupRecoveryError) throw error;
+      const message = vscode.l10n.t(
+        '[{0}]: Update completed and local changes were restored, but recovery stash {1} was kept.',
+        path.basename(this.rootPath), stashHash.slice(0, 12),
+      );
+      logWarn(`pull-auto-stash:${this.repoId}`, message, getRawErrorDetail(error));
+      notifyWithLogAction('warning', message);
+    }
+    return result;
+  }
+
+  private async findPullStash(marker: string): Promise<string | undefined> {
+    const entries = await this.git.raw(['stash', 'list', '--format=%H%x00%gs']);
+    return entries.split('\n').find(entry => entry.endsWith(`: ${marker}`))?.split('\0')[0];
+  }
+
+  private async canRestorePullStash(): Promise<boolean> {
+    return !await this.hasUnfinishedGitOperation() && (await this.git.status()).conflicted.length === 0;
+  }
+
+  private async hasUnfinishedGitOperation(): Promise<boolean> {
+    const dir = await this.gitDir();
+    return !!await this.getMergeRebaseState()
+      || ['CHERRY_PICK_HEAD', 'REVERT_HEAD', 'sequencer'].some(name => fs.existsSync(path.join(dir, name)));
+  }
+
+  private async withStashMutation<T>(operation: () => Promise<T>, rejectIfBusy = false): Promise<T> {
+    const commonDir = (await this.git.raw(['rev-parse', '--git-common-dir'])).trim();
+    const key = fs.realpathSync(path.resolve(this.rootPath, commonDir));
+    // A user-selected stash@{N} must not wait behind a mutation that can change
+    // its meaning. Ask for a fresh selection once the active operation finishes.
+    if (rejectIfBusy && GitService.stashMutations.has(key)) {
+      throw new Error(vscode.l10n.t('Another stash or update operation is in progress for this repository. Wait for it to finish and refresh the Stash tab before retrying.'));
+    }
+    const previous = GitService.stashMutations.get(key) ?? Promise.resolve();
+    let release!: () => void;
+    const active = new Promise<void>(resolve => { release = resolve; });
+    const tail = previous.then(() => active);
+    GitService.stashMutations.set(key, tail);
+    await previous;
+    try {
+      return await operation();
+    } finally {
+      release();
+      if (GitService.stashMutations.get(key) === tail) GitService.stashMutations.delete(key);
+    }
+  }
+
+  private async resolveStash(stashRef: string): Promise<{ hash: string; ref: string }> {
+    const hash = (await this.git.raw(['rev-parse', '--verify', '--end-of-options', `${stashRef}^{commit}`])).trim();
+    const entries = await this.git.raw(['stash', 'list', '--format=%H%x00%gd']);
+    const entry = entries.split('\n').map(line => line.split('\0')).find(([entryHash]) => entryHash === hash);
+    if (!entry) throw new Error(vscode.l10n.t('This stash is no longer available. Refresh the Stash tab and retry.'));
+    return { hash, ref: entry[1] };
+  }
+
+  private async dropStashByHash(hash: string): Promise<void> {
+    const entry = await this.resolveStash(hash);
+    const dropped = await this.git.raw(['stash', 'drop', entry.ref]);
+    const droppedHash = /\(([0-9a-f]{40}|[0-9a-f]{64})\)/.exec(dropped)?.[1];
+    if (droppedHash === hash) return;
+    // Native stash drop selects by mutable reflog index. Compensate if an
+    // external process shifted it, preserving that process's stash by its hash.
+    if (droppedHash) {
+      try {
+        const subject = (await this.git.raw(['show', '-s', '--format=%s', droppedHash])).trim();
+        await this.git.raw(['stash', 'store', '-m', subject, droppedHash]);
+      } catch (error) {
+        const message = vscode.l10n.t(
+          'Stash cleanup failed after another process changed the stash list. Recover stash {0} with "git stash store {0}". {1}',
+          droppedHash, formatGitError(error, 1),
+        );
+        logError(`stash-cleanup:${this.repoId}`, message, getRawErrorDetail(error));
+        throw new StashCleanupRecoveryError(message);
+      }
+    }
+    throw new Error(vscode.l10n.t('The stash list changed during cleanup. Refresh the Stash tab and retry.'));
+  }
+
+  private pullAutoStashError(message: string, error: unknown): Error {
+    logError(`pull-auto-stash:${this.repoId}`, message, getRawErrorDetail(error));
+    // A fresh Error keeps formatGitError from replacing the recovery instructions
+    // with the original DirtyWorkTree/Conflict error code.
+    return new Error(message);
   }
 
   async fetchAll(): Promise<void> {
@@ -1752,6 +1949,10 @@ export class GitService {
    * callers must not report that as a completed merge.
    */
   async merge(from: string): Promise<{ upToDate: boolean }> {
+    return this.withStashMutation(() => this.mergeWithLocalChanges(from));
+  }
+
+  private async mergeWithLocalChanges(from: string): Promise<{ upToDate: boolean }> {
     const before = await this.getFullHash();
     try {
       await this.git.merge([from]);
@@ -1835,7 +2036,7 @@ export class GitService {
   async pullFromRemote(remote: string, branch: string, rebase: boolean): Promise<void> {
     // VS Code API pull() doesn't accept remote/branch args — use simple-git
     const args = rebase ? ['pull', '--rebase', remote, branch] : ['pull', remote, branch];
-    await this.git.raw(args);
+    await this.withPullAutoStash(async () => { await this.git.raw(args); });
   }
 
   /**
@@ -1863,6 +2064,10 @@ export class GitService {
    * ref of the currently checked-out branch while the working tree has uncommitted changes.
    */
   async checkoutPullRequest(remote: string, remoteRef: string, localBranch: string): Promise<void> {
+    await this.withStashMutation(() => this.checkoutPullRequestWithLocalChanges(remote, remoteRef, localBranch));
+  }
+
+  private async checkoutPullRequestWithLocalChanges(remote: string, remoteRef: string, localBranch: string): Promise<void> {
     const currentBranch = await this.getCurrentBranch().catch(() => null);
     const isCurrent = currentBranch?.name === localBranch;
 
@@ -2208,17 +2413,18 @@ export class GitService {
   // ── Stash operations ──────────────────────────────────────────────────────
 
   async stashList(): Promise<StashEntry[]> {
-    const raw = await this.git.raw(['stash', 'list', '--format=%gd|%ci|%gs']).catch(() => '');
+    const raw = await this.git.raw(['stash', 'list', '--format=%H|%gd|%ci|%gs']).catch(() => '');
     if (!raw.trim()) return [];
 
     const entries: StashEntry[] = [];
     for (const line of raw.trim().split('\n')) {
       if (!line.trim()) continue;
       const parts = line.split('|');
-      if (parts.length < 3) continue;
-      const ref = parts[0].trim();         // stash@{N}
-      const date = parts[1].trim();        // ISO date
-      const subject = parts.slice(2).join('|').trim(); // "On branch: message" or "WIP on branch: message"
+      if (parts.length < 4) continue;
+      const hash = parts[0].trim();
+      const ref = parts[1].trim();         // stash@{N}
+      const date = parts[2].trim();        // ISO date
+      const subject = parts.slice(3).join('|').trim(); // "On branch: message" or "WIP on branch: message"
 
       const indexMatch = ref.match(/stash@\{(\d+)\}/);
       const index = indexMatch ? parseInt(indexMatch[1], 10) : 0;
@@ -2232,7 +2438,7 @@ export class GitService {
       const files: Array<{ path: string; status: string; added?: number; removed?: number }> = [];
       try {
         const stats = new Map<string, { added: number; removed: number }>();
-        const numstatRaw = await this.git.raw(['stash', 'show', '--numstat', ref]).catch(() => '');
+        const numstatRaw = await this.git.raw(['stash', 'show', '--numstat', hash]).catch(() => '');
         for (const line of numstatRaw.trim().split('\n')) {
           const parts = line.split('\t');
           if (parts.length < 3) continue;
@@ -2242,7 +2448,7 @@ export class GitService {
           if (path && !isNaN(added) && !isNaN(removed)) stats.set(path, { added, removed });
         }
 
-        const fileRaw = await this.git.raw(['stash', 'show', '--name-status', ref]);
+        const fileRaw = await this.git.raw(['stash', 'show', '--name-status', hash]);
         for (const fileLine of fileRaw.trim().split('\n')) {
           if (!fileLine.trim()) continue;
           const fileParts = fileLine.split('\t');
@@ -2256,7 +2462,7 @@ export class GitService {
 
       // Also include untracked files saved in stash^3 (created by `git stash -u`)
       try {
-        const untrackedRaw = await this.git.raw(['ls-tree', '--name-only', `${ref}^3`]);
+        const untrackedRaw = await this.git.raw(['ls-tree', '-r', '--name-only', `${hash}^3`]);
         const trackedPaths = new Set(files.map(f => f.path));
         for (const f of untrackedRaw.trim().split('\n')) {
           const filePath = f.trim();
@@ -2268,10 +2474,10 @@ export class GitService {
 
       let parentHash = '';
       try {
-        parentHash = (await this.git.raw(['rev-parse', `${ref}^1`])).trim();
+        parentHash = (await this.git.raw(['rev-parse', `${hash}^1`])).trim();
       } catch { /* ignore */ }
 
-      entries.push({ ref, index, message, date, branch, parentHash, files });
+      entries.push({ hash, ref, index, message, date, branch, parentHash, files });
     }
     return entries;
   }
@@ -2281,6 +2487,10 @@ export class GitService {
   }
 
   async stashPush(message: string, paths?: string[]): Promise<void> {
+    await this.withStashMutation(() => this.pushStash(message, paths), true);
+  }
+
+  private async pushStash(message: string, paths?: string[]): Promise<void> {
     if (!paths || paths.length === 0) {
       await this.git.raw(['stash', 'push', '-u', '-m', message]);
       return;
@@ -2326,23 +2536,34 @@ export class GitService {
   }
 
   async stashApply(stashRef: string): Promise<void> {
-    await this.git.raw(['stash', 'apply', stashRef]);
+    await this.withStashMutation(async () => {
+      const stash = await this.resolveStash(stashRef);
+      await this.git.raw(['stash', 'apply', stash.hash]);
+    }, true);
   }
 
   async stashPop(stashRef = 'stash@{0}'): Promise<void> {
     // git stash pop always pops stash@{0}, so we apply then drop
-    await this.git.raw(['stash', 'apply', stashRef]);
-    await this.git.raw(['stash', 'drop', stashRef]);
+    await this.withStashMutation(async () => {
+      const stash = await this.resolveStash(stashRef);
+      await this.git.raw(['stash', 'apply', stash.hash]);
+      await this.dropStashByHash(stash.hash);
+    }, true);
   }
 
   async stashDrop(stashRef: string): Promise<void> {
-    await this.git.raw(['stash', 'drop', stashRef]);
+    await this.withStashMutation(async () => {
+      const stash = await this.resolveStash(stashRef);
+      await this.dropStashByHash(stash.hash);
+    }, true);
   }
 
   async stashRename(stashRef: string, newMessage: string): Promise<void> {
-    const hash = (await this.git.raw(['rev-parse', stashRef])).trim();
-    await this.git.raw(['stash', 'drop', stashRef]);
-    await this.git.raw(['stash', 'store', '-m', newMessage, hash]);
+    await this.withStashMutation(async () => {
+      const stash = await this.resolveStash(stashRef);
+      await this.dropStashByHash(stash.hash);
+      await this.git.raw(['stash', 'store', '-m', newMessage, stash.hash]);
+    }, true);
   }
 
   async getStashFileContent(stashRef: string, filePath: string): Promise<string> {

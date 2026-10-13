@@ -1111,8 +1111,6 @@
   "Committing {0} repositories": "Haciendo commit en {0} repositorios",
   "{0}: not found": "{0}: no encontrado",
   "Pulling all repositories": "Haciendo pull de todos los repositorios",
-  "1 pull failed": "Falló 1 pull",
-  "{0} pulls failed": "Fallaron {0} pull",
   "Syncing": "Sincronizando",
   "Pull failed: {0}": "Error en el pull: {0}",
   "Push failed: {0}": "Error en el push: {0}",
@@ -1326,5 +1324,18 @@
   "{0} did not answer within {1} seconds": "{0} no respondió en {1} segundos",
   "{0} exited with code {1}": "{0} terminó con el código {1}",
   "File path…": "Ruta del archivo…",
-  "Repository-relative file path": "Ruta del archivo relativa al repositorio"
+  "Repository-relative file path": "Ruta del archivo relativa al repositorio",
+  "An update is already in progress for this repository.": "Ya hay una actualización en curso para este repositorio.",
+  "Resolve conflicts and finish or abort the current Git operation before updating.": "Resuelve los conflictos y completa o aborta la operación actual de Git antes de actualizar.",
+  "Saving local changes failed. Update was canceled; recovery stash {0} was kept. {1}": "No se pudieron guardar los cambios locales. Se canceló la actualización; se conservó el stash {0} para recuperarlos. {1}",
+  "Update failed. Local changes are saved in stash {0}; restore them from the Stash tab after resolving or aborting the update. {1}": "La actualización falló. Los cambios locales están guardados en el stash {0}; restáuralos desde la pestaña Stash después de resolver los conflictos o abortar la actualización. {1}",
+  "Update failed and restoring local changes failed. Recovery stash {0} was kept; use the Stash tab to recover it. {1}": "La actualización y la restauración de los cambios locales fallaron. Se conservó el stash {0} para recuperarlos; usa la pestaña Stash para restaurar los cambios. {1}",
+  "Update failed. Local changes were restored; recovery stash {0} was kept. {1}": "La actualización falló. Los cambios locales se restauraron; se conservó el stash {0} para recuperarlos. {1}",
+  "Update completed, but restoring local changes failed. Recovery stash {0} was kept; resolve conflicts or recover it from the Stash tab. {1}": "La actualización se completó, pero no se pudieron restaurar los cambios locales. Se conservó el stash {0} para recuperarlos; resuelve los conflictos o restaura los cambios desde la pestaña Stash. {1}",
+  "[{0}]: Update completed and local changes were restored, but recovery stash {1} was kept.": "[{0}]: La actualización se completó y los cambios locales se restauraron, pero se conservó el stash {1} para recuperarlos.",
+  "Update was canceled because the recovery stash could not be identified. Local changes were saved with stash description \"{0}\"; inspect the Stash tab before retrying. {1}": "Se canceló la actualización porque no se pudo identificar el stash de recuperación. Los cambios locales se guardaron en un stash con la descripción \"{0}\"; revisa la pestaña Stash antes de volver a intentarlo. {1}",
+  "Stash cleanup failed after another process changed the stash list. Recover stash {0} with \"git stash store {0}\". {1}": "La limpieza de los stashes falló después de que otro proceso modificara la lista. Recupera el stash {0} con \"git stash store {0}\". {1}",
+  "Another stash or update operation is in progress for this repository. Wait for it to finish and refresh the Stash tab before retrying.": "Hay otra operación de stash o actualización en curso para este repositorio. Espera a que termine y actualiza la pestaña Stash antes de volver a intentarlo.",
+  "This stash is no longer available. Refresh the Stash tab and retry.": "Este stash ya no está disponible. Actualiza la pestaña Stash y vuelve a intentarlo.",
+  "The stash list changed during cleanup. Refresh the Stash tab and retry.": "La lista de stashes cambió durante la limpieza. Actualiza la pestaña Stash y vuelve a intentarlo."
 }
