@@ -722,7 +722,7 @@ export class WorkspaceGitManager implements vscode.Disposable {
 
     if (newlyUntracked.length > 0) {
       const cfg = vscode.workspace.getConfiguration('gitchyan');
-      const enabled = cfg.get<boolean>('promptAddUntrackedToGit', true);
+      const enabled = cfg.get<boolean>('promptAddUntrackedToGit', false);
       const viewMode = cfg.get<string>('changesViewMode', 'simplified');
       if (enabled && viewMode !== 'simplified') {
         void this.promptAddToGit(newlyUntracked);

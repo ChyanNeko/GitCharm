@@ -1144,7 +1144,7 @@
           "gitchyan.promptAddUntrackedToGit": {
             "order": 25,
             "type": "boolean",
-            "default": true,
+            "default": false,
             "description": "%config.promptAddUntrackedToGit.description%"
           },
           "gitchyan.defaultCommitAction": {
