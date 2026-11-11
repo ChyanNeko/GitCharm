@@ -23,6 +23,7 @@ interface Props {
   error: string | null;
   viewMode: ViewMode;
   onApply: (repoId: string, stashRef: string) => void;
+  onApplyFile: (repoId: string, stashRef: string, filePath: string) => void;
   onPop: (repoId: string, stashRef: string) => void;
   onDrop: (repoId: string, stashRef: string) => void;
   onRename: (repoId: string, stashRef: string, currentMessage: string) => void;
@@ -90,11 +91,12 @@ type StashFile = StashEntry['files'][number];
 
 // ── Single stash entry row ────────────────────────────────────────────────────
 
-function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, onOpenFileDiff, expandAll, isLast }: {
+function StashRow({ entry, repoId, viewMode, onApply, onApplyFile, onPop, onDrop, onRename, onOpenFileDiff, expandAll, isLast }: {
   entry: StashEntry;
   repoId: string;
   viewMode: ViewMode;
   onApply: Props['onApply'];
+  onApplyFile: Props['onApplyFile'];
   onPop: Props['onPop'];
   onDrop: Props['onDrop'];
   onRename: Props['onRename'];
@@ -184,6 +186,9 @@ function StashRow({ entry, repoId, viewMode, onApply, onPop, onDrop, onRename, o
               isDirOpen={dirPath => openDirs.has(dirPath)}
               toggleDir={toggleDir}
               onOpenFile={f => onOpenFileDiff(repoId, entry.hash, f.path)}
+              renderFileActions={(f, hovered) => (
+                <InlineIconBtn icon="desktop-download" title={l10n.t('Apply this stashed file only')} visible={hovered} onClick={e => { e.stopPropagation(); onApplyFile(repoId, entry.hash, f.path); }} />
+              )}
             />
           )}
         </div>
@@ -215,7 +220,7 @@ export function StashTab({
   repoId, repoName, repoColor, multiRepo, singleRepo = false,
   worktreeBranch, mainRepoName,
   stashes, loading, error, viewMode,
-  onApply, onPop, onDrop, onRename, onRequestList: _onRequestList, onOpenFileDiff,
+  onApply, onApplyFile, onPop, onDrop, onRename, onRequestList: _onRequestList, onOpenFileDiff,
   expandAll = false, isLast = false,
 }: Props) {
   const { isCollapsed, toggleCollapsed } = useCommitStore();
@@ -265,6 +270,7 @@ export function StashTab({
               repoId={repoId}
               viewMode={viewMode}
               onApply={onApply}
+              onApplyFile={onApplyFile}
               onPop={onPop}
               onDrop={onDrop}
               onRename={onRename}

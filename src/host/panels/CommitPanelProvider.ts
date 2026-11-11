@@ -1883,6 +1883,27 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
         break;
       }
 
+      case 'STASH_APPLY_FILE': {
+        const repo = this.manager.getRepo(msg.repoId);
+        if (!repo) {
+          this.post({ type: 'STASH_OP_RESULT', requestId: msg.requestId, repoId: msg.repoId, op: 'applyFile', ok: false, error: vscode.l10n.t('Repo not found') });
+          break;
+        }
+        try {
+          await repo.stashApplyFile(msg.stashRef, msg.filePath);
+          const status = await this.manager.getAllStatusesFresh();
+          this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+          this.post({ type: 'STASH_OP_RESULT', requestId: msg.requestId, repoId: msg.repoId, op: 'applyFile', ok: true });
+        } catch (e: unknown) {
+          logError('stash-apply-file', formatGitError(e), getRawErrorDetail(e));
+          this.post({ type: 'STASH_OP_RESULT', requestId: msg.requestId, repoId: msg.repoId, op: 'applyFile', ok: false, error: formatGitError(e) });
+          // A three-way apply can leave conflict markers even when it reports failure.
+          const status = await this.manager.getAllStatusesFresh().catch(() => undefined);
+          if (status) this.post({ type: 'COMMIT_STATUS_UPDATE', repos: this.manager.getRepoMetas(), status });
+        }
+        break;
+      }
+
       case 'STASH_POP': {
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) {
@@ -2926,6 +2947,20 @@ export class CommitPanelProvider implements vscode.WebviewViewProvider {
         if (!repoOS) return;
         const absPathOS = path.join(repoOS.rootPath, msg.filePath);
         await vscode.commands.executeCommand('revealFileInOS', vscode.Uri.file(absPathOS));
+        break;
+      }
+
+      case 'COMMIT_COPY_PATH': {
+        const repo = this.manager.getRepo(msg.repoId);
+        if (!repo) return;
+        const absolutePath = path.resolve(repo.rootPath, msg.entryPath);
+        const repoRelativePath = path.relative(repo.rootPath, absolutePath);
+        if (repoRelativePath === '..' || repoRelativePath.startsWith(`..${path.sep}`) || path.isAbsolute(repoRelativePath)) return;
+        const workspaceFolder = vscode.workspace.getWorkspaceFolder(vscode.Uri.file(absolutePath));
+        const relativePath = workspaceFolder
+          ? path.relative(workspaceFolder.uri.fsPath, absolutePath)
+          : repoRelativePath;
+        await vscode.env.clipboard.writeText(msg.relative ? relativePath : absolutePath);
         break;
       }
     }

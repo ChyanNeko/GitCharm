@@ -117,7 +117,7 @@ export type HostToCommitMsg =
   | { type: 'SHELVE_OP_RESULT'; requestId: string; repoId: string; op: 'push' | 'apply' | 'drop'; ok: boolean; error?: string; hasConflicts?: boolean; conflictFiles?: string[] }
   | { type: 'STASH_LIST_RESULT'; requestId: string; repoId: string; stashes: StashEntry[]; error?: string }
   | { type: 'STASH_SHOW_RESULT'; requestId: string; diff: string; error?: string }
-  | { type: 'STASH_OP_RESULT'; requestId: string; repoId: string; op: 'apply' | 'pop' | 'drop' | 'push'; ok: boolean; error?: string }
+  | { type: 'STASH_OP_RESULT'; requestId: string; repoId: string; op: 'apply' | 'applyFile' | 'pop' | 'drop' | 'push'; ok: boolean; error?: string }
   | { type: 'PUSH_UNPUSHED_RESULT'; requestId: string; repoId: string; commits: UnpushedCommit[]; error?: string }
   | { type: 'PUSH_SQUASH_RESULT'; requestId: string; ok: boolean; error?: string }
   | { type: 'PUSH_DROP_RESULT'; requestId: string; ok: boolean; error?: string }
@@ -190,6 +190,7 @@ export type CommitToHostMsg =
   | { type: 'STASH_PUSH'; requestId: string; repoId: string; message: string; paths?: string[] }
   | { type: 'STASH_SHOW'; requestId: string; repoId: string; stashRef: string; filePath: string }
   | { type: 'STASH_APPLY'; requestId: string; repoId: string; stashRef: string }
+  | { type: 'STASH_APPLY_FILE'; requestId: string; repoId: string; stashRef: string; filePath: string }
   | { type: 'STASH_POP'; requestId: string; repoId: string; stashRef: string }
   | { type: 'STASH_DROP'; requestId: string; repoId: string; stashRef: string }
   | { type: 'STASH_RENAME'; requestId: string; repoId: string; stashRef: string; currentMessage: string }
@@ -225,6 +226,7 @@ export type CommitToHostMsg =
   | { type: 'NOTIFY_INFO'; message: string }
   | { type: 'COMMIT_REVEAL_IN_EXPLORER'; repoId: string; filePath: string }
   | { type: 'COMMIT_REVEAL_IN_OS'; repoId: string; filePath: string }
+  | { type: 'COMMIT_COPY_PATH'; repoId: string; entryPath: string; relative: boolean }
   | { type: 'COMMIT_SHOW_FILE_HISTORY'; repoId: string; filePath: string }
   | { type: 'COMMIT_COMPARE_FILE_WITH'; repoId: string; filePath: string }
   | { type: 'COMMIT_COMPARE_FOLDER_WITH'; repoId: string; folderPath: string }
@@ -319,8 +321,8 @@ export type HostToLogMsg =
 
 export type LogToHostMsg =
   | { type: 'LOG_REQUEST_COMMITS'; repoIds: string[]; limit: number; skip: number; requestId?: string; filterText?: string; filterAuthor?: string; filterBranch?: string; filterFilePath?: string; filterDateFrom?: string; filterDateTo?: string }
-  | { type: 'LOG_REQUEST_COMMIT_FILES'; requestId: string; repoId: string; hash: string; parents?: string[] }
-  | { type: 'LOG_REQUEST_RANGE_FILES'; requestId: string; repoId: string; hashes: string[] }
+  | { type: 'LOG_REQUEST_COMMIT_FILES'; requestId: string; repoId: string; hash: string; parents?: string[]; filePath?: string; oldPath?: string }
+  | { type: 'LOG_REQUEST_RANGE_FILES'; requestId: string; repoId: string; hashes: string[]; filePaths?: string[] }
   | { type: 'LOG_REQUEST_FILE_DIFF'; requestId: string; repoId: string; hash: string; filePath: string }
   | { type: 'LOG_OPEN_FILE_DIFF'; repoId: string; hash: string; filePath: string; fileStatus?: string; oldPath?: string; parents?: string[]; combined?: boolean }
   | { type: 'LOG_OPEN_RANGE_FILE_DIFF'; repoId: string; hashes: string[]; filePath: string; fileStatus?: string; oldPath?: string }

@@ -58,6 +58,17 @@ function dynItems(items: ContextMenuEntry[], n: number): ContextMenuEntry[] {
 
 const revealOsLabel = () => l10n.t('Reveal in File Manager');
 
+function withCopyPathItems(items: ContextMenuEntry[]): ContextMenuEntry[] {
+  const refreshIndex = items.findIndex(item => 'id' in item && item.id === 'refresh');
+  return [
+    ...items.slice(0, refreshIndex),
+    { id: 'copy-path', label: l10n.t('Copy Path'), icon: 'copy' },
+    { id: 'copy-relative-path', label: l10n.t('Copy Relative Path'), icon: 'copy' },
+    { separator: true },
+    ...items.slice(refreshIndex),
+  ];
+}
+
 const FILE_CONTEXT_ITEMS = (): ContextMenuEntry[] => [
   { id: 'rollback',        label: l10n.t('Rollback'),            icon: 'discard' },
   { id: 'shelve',          label: l10n.t('Shelve'),              icon: 'archive' },
@@ -810,6 +821,10 @@ function App() {
     send({ type: 'STASH_APPLY', requestId: generateId(), repoId, stashRef });
   }, [send]);
 
+  const handleStashApplyFile = useCallback((repoId: string, stashRef: string, filePath: string) => {
+    send({ type: 'STASH_APPLY_FILE', requestId: generateId(), repoId, stashRef, filePath });
+  }, [send]);
+
   const handleStashPop = useCallback((repoId: string, stashRef: string) => {
     send({ type: 'STASH_POP', requestId: generateId(), repoId, stashRef });
   }, [send]);
@@ -1025,6 +1040,10 @@ function App() {
       case 'reveal-os':
         send({ type: 'COMMIT_REVEAL_IN_OS', repoId: file.repoId, filePath: file.path });
         break;
+      case 'copy-path':
+      case 'copy-relative-path':
+        send({ type: 'COMMIT_COPY_PATH', repoId: file.repoId, entryPath: file.path, relative: id === 'copy-relative-path' });
+        break;
       case 'gitignore':
         send({ type: 'COMMIT_ADD_TO_GITIGNORE', repoId: file.repoId, entryPath: file.path });
         break;
@@ -1058,6 +1077,10 @@ function App() {
         break;
       case 'compare-with':
         send({ type: 'COMMIT_COMPARE_FOLDER_WITH', repoId: ctx.repoId, folderPath: ctx.folderPath });
+        break;
+      case 'copy-path':
+      case 'copy-relative-path':
+        send({ type: 'COMMIT_COPY_PATH', repoId: ctx.repoId, entryPath: ctx.folderPath, relative: id === 'copy-relative-path' });
         break;
       case 'gitignore':
         send({ type: 'COMMIT_ADD_TO_GITIGNORE', repoId: ctx.repoId, entryPath: ctx.folderPath });
@@ -1949,6 +1972,7 @@ function App() {
                   error={stashError[repoId] ?? null}
                   viewMode={store.viewAndSort.fileViewMode}
                   onApply={handleStashApply}
+                  onApplyFile={handleStashApplyFile}
                   onPop={handleStashPop}
                   onDrop={handleStashDrop}
                   onRename={handleRenameStash}
@@ -2099,7 +2123,7 @@ function App() {
         return (
           <ContextMenu
             x={ctxMenu.x} y={ctxMenu.y}
-            items={dynItems(items, 1)}
+            items={dynItems(withCopyPathItems(items), 1)}
             onSelect={id => {
               if (id === 'add-to-git') {
                 send({ type: 'COMMIT_STAGE_FILES', requestId: generateId(), repoId: file.repoId, paths: [file.path] } satisfies CommitToHostMsg);
@@ -2148,7 +2172,7 @@ function App() {
         return (
           <ContextMenu
             x={folderCtxMenu.x} y={folderCtxMenu.y}
-            items={dynItems(items, folderCtxMenu.files.length)}
+            items={dynItems(withCopyPathItems(items), folderCtxMenu.files.length)}
             onSelect={id => {
               if (id === 'add-to-git') {
                 send({ type: 'COMMIT_STAGE_FILES', requestId: generateId(), repoId: folderCtxMenu.repoId, paths: files.map(f => f.path) } satisfies CommitToHostMsg);

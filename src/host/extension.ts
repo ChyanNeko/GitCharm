@@ -310,7 +310,10 @@ export function activate(context: vscode.ExtensionContext): void {
 
   const branchStatusBar = new BranchStatusBar(manager, () => {
     vscode.commands.executeCommand('gitchyan.commitPanel.focus');
-  }, repoId => commitPanel.openPushPreview(repoId));
+  }, repoId => commitPanel.openPushPreview(repoId), async () => {
+    await vscode.commands.executeCommand('gitchyan.commitPanel.focus');
+    commitPanel.switchToTab('stash');
+  });
 
   commitPanel.setBranchStatusBar(branchStatusBar);
   branchStatusBar.setLogPanel(logPanel);

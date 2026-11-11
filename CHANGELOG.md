@@ -5,13 +5,16 @@ All notable changes to GitCharm are documented in this file.
 ## Unreleased
 
 ### ✨ New Features
-- Pull and Update Project automatically stash local changes (including untracked files), restore their staged/unstaged state after updating, and remove the temporary stash only after both steps succeed. Failed updates or restores keep a recovery stash; disable this behavior with `gitchyan.autoStashOnPull`.
+- Copy absolute or workspace-relative paths from file and folder context menus in the Changes list.
+- Pull and Update Project automatically save local changes (including untracked files) in a timestamped stash, restore their staged/unstaged state after updating, and remove the temporary stash only after both steps succeed. Conflicting changes remain in the Stash tab for manual recovery, including one file at a time; disable this behavior with `gitchyan.autoStashOnPull`.
 - View a file's history directly from the top of the Explorer, editor or editor-tab context menu, opening Git Log with its repository and file selected. The log's new file-path filter follows renames, supports the existing commit filters and pagination, and works with submodules and worktrees.
 - Select consecutive outgoing commits with Shift-click in the Push Preview, Push tab, or Git Log, then right-click to squash them in an editable commit-message panel.
 - Preview one repository's outgoing commits and changed files in an editor tab before confirming Push; multi-repository actions open the Push tab for review.
 - Show a green outgoing arrow beside a branch with commits to push in the Changes header, with a dropdown chevron for the branch picker.
 
 ### 🐛 Bug Fixes
+- File history in Git Log now shows only the selected file in commit details, including its earlier path across renames, so large commits remain quick to inspect.
+- Squashing outgoing commits now preserves unstaged and untracked working tree changes; only staged changes or unresolved conflicts block the operation.
 - Disable optional index cache writes in GitCharm's Git processes so background status reads do not contend with Pull/autostash and other index-writing operations.
 - Disable prompts to add new untracked files to Git by default; they can be enabled with `gitchyan.promptAddUntrackedToGit`, and manual Add to Git and staging actions remain available.
 - Ordinary Push actions in a repository's branch menus open the shared Push Preview for that repository and require confirmation before pushing.

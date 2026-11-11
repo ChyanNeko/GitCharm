@@ -96,6 +96,8 @@ function commitListsEqual(a: CommitNode[], b: CommitNode[]): boolean {
       x.committerDate !== y.committerDate ||
       x.authorName !== y.authorName ||
       x.authorEmail !== y.authorEmail ||
+      x.historyFilePath !== y.historyFilePath ||
+      x.historyOldPath !== y.historyOldPath ||
       !!x.unpushed !== !!y.unpushed ||
       !!x.incoming !== !!y.incoming ||
       !stringsEqual(x.parents, y.parents) ||

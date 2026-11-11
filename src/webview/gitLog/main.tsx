@@ -115,6 +115,12 @@ function App() {
       requestId: '',
       repoId: multiSelectedCommits[0].repoId,
       hashes: multiSelectedCommits.map(c => c.hash),
+      ...(store.commitFilters.filePath ? {
+        filePaths: [...new Set([
+          store.commitFilters.filePath,
+          ...multiSelectedCommits.flatMap(c => [c.historyFilePath, c.historyOldPath]),
+        ].filter((p): p is string => !!p))],
+      } : {}),
     }).then(msg => {
       if (rangeRequestKeyRef.current !== selectedRangeKey) return;
       const ordered = msg.orderedHashes.map(hash => selectedByHash.get(hash)).filter((c): c is CommitNode => !!c);
@@ -311,6 +317,10 @@ function App() {
       repoId: selectedCommit.repoId,
       hash: selectedCommit.hash,
       parents: selectedCommit.parents,
+      ...(store.commitFilters.filePath ? {
+        filePath: selectedCommit.historyFilePath ?? store.commitFilters.filePath,
+        oldPath: selectedCommit.historyOldPath,
+      } : {}),
     } satisfies LogToHostMsg);
   }, [store.fileLoadSeq]);
 

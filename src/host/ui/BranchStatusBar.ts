@@ -92,6 +92,7 @@ export class BranchStatusBar implements vscode.Disposable {
     private readonly manager: WorkspaceGitManager,
     private readonly commitPanelReveal: () => void,
     private readonly openPushPreview: (repoId: string) => Promise<void>,
+    private readonly openStashRecovery: () => Promise<void>,
   ) {
     this.statusBarItem = vscode.window.createStatusBarItem(
       vscode.StatusBarAlignment.Left,
@@ -1027,23 +1028,27 @@ export class BranchStatusBar implements vscode.Disposable {
       },
       async () => {
         const results = await this.manager.pullAll(pick.rebase);
-        const failed = results.filter(r => !r.ok);
+        const failed = results.filter(r => !r.ok && !r.restoreConflict);
+        const conflicts = results.filter(r => r.restoreConflict);
         const ok = results.filter(r => r.ok);
-        if (failed.length === 0) {
+        if (failed.length === 0 && conflicts.length === 0) {
           const msg = `${ok.length} ${ok.length === 1 ? 'repository' : 'repositories'} updated.`;
           vscode.window.showInformationMessage(plural(ok.length,
             vscode.l10n.t('1 repository updated.'),
             vscode.l10n.t('{0} repositories updated.', ok.length)));
           logInfo('update-project', msg);
         } else {
-          const failedDesc = failed.map(r => {
+          const failedDesc = [...conflicts, ...failed].map(r => {
             const name = metaById.get(r.repoId)?.name ?? r.repoId;
             return `${name}: ${r.message}`;
           }).join('; ');
-          logWarn('update-project', `${ok.length} updated, ${failed.length} failed.`, failedDesc);
-          notifyWithLogAction('warning', vscode.l10n.t('{0} updated, {1} failed: {2}', ok.length, failed.length, failedDesc));
+          logWarn('update-project', `${ok.length} updated, ${conflicts.length} pulled with stash conflicts, ${failed.length} failed.`, failedDesc);
+          notifyWithLogAction('warning', conflicts.length > 0
+            ? vscode.l10n.t('{0} updated, {1} pulled but local changes need manual stash recovery, {2} failed: {3}', ok.length, conflicts.length, failed.length, failedDesc)
+            : vscode.l10n.t('{0} updated, {1} failed: {2}', ok.length, failed.length, failedDesc));
         }
-        await vscode.commands.executeCommand('gitchyan.openLog');
+        if (conflicts.length > 0) await this.openStashRecovery();
+        else await vscode.commands.executeCommand('gitchyan.openLog');
       }
     );
   }

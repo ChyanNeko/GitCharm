@@ -66,6 +66,8 @@ export interface CommitNode {
   committerDate: string;
   parents: string[];
   refs: string[];
+  historyFilePath?: string;
+  historyOldPath?: string;
   unpushed?: boolean;
   incoming?: boolean;
   isStash?: boolean;

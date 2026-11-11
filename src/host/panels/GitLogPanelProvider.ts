@@ -832,7 +832,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
         const repo = this.manager.getRepo(msg.repoId);
         if (!repo) { post({ type: 'LOG_COMMIT_FILES', requestId: msg.requestId, files: [], error: 'Repo not found' }); return; }
         try {
-          const files = await repo.getCommitFiles(msg.hash, msg.parents);
+          const files = await repo.getCommitFiles(msg.hash, msg.parents, msg.filePath, msg.oldPath);
           post({ type: 'LOG_COMMIT_FILES', requestId: msg.requestId, files });
         } catch (e: unknown) {
           logError('commitFiles', formatGitError(e), getRawErrorDetail(e));
@@ -846,7 +846,7 @@ export class GitLogPanelProvider implements vscode.WebviewViewProvider, vscode.D
         if (!repo) { post({ type: 'LOG_RANGE_FILES_RESULT', requestId: msg.requestId, files: [], orderedHashes: [], error: 'Repo not found' }); return; }
         try {
           const [files, orderedHashes] = await Promise.all([
-            repo.getFilesBetween(msg.hashes),
+            repo.getFilesBetween(msg.hashes, msg.filePaths),
             repo.getCombinedFilesOrder(msg.hashes),
           ]);
           post({ type: 'LOG_RANGE_FILES_RESULT', requestId: msg.requestId, files, orderedHashes });

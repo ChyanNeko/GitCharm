@@ -1,7 +1,7 @@
 import * as vscode from 'vscode';
 import * as fs from 'fs';
 import * as path from 'path';
-import { GitService } from './GitService';
+import { GitService, PullRestoreConflictError } from './GitService';
 import type { WorktreeEntry } from './GitService';
 import { getVscodeGitApi, getVscodeRepository } from './VscodeGitApi';
 import type { BranchInfo, CommitNode, RepoMeta, WorkspaceStatus } from '../types/git';
@@ -1183,15 +1183,15 @@ export class WorkspaceGitManager implements vscode.Disposable {
     if (newlyOrphaned.length > 0) this.orphanListeners.forEach(l => l(newlyOrphaned));
   }
 
-  async pullAll(rebase = false): Promise<Array<{ repoId: string; ok: boolean; message: string }>> {
+  async pullAll(rebase = false): Promise<Array<{ repoId: string; ok: boolean; message: string; restoreConflict?: boolean }>> {
     const repos = Array.from(this.repos.values());
-    const results: Array<{ repoId: string; ok: boolean; message: string }> = [];
+    const results: Array<{ repoId: string; ok: boolean; message: string; restoreConflict?: boolean }> = [];
     for (const r of repos) {
       try {
         const message = rebase ? await r.pullRebase() : await r.pull();
         results.push({ repoId: r.repoId, ok: true, message });
       } catch (e: unknown) {
-        results.push({ repoId: r.repoId, ok: false, message: formatGitError(e) });
+        results.push({ repoId: r.repoId, ok: false, message: formatGitError(e), restoreConflict: e instanceof PullRestoreConflictError });
       }
     }
     return results;

@@ -59,6 +59,9 @@ function stripCommitComments(raw: string): string {
 
 class StashCleanupRecoveryError extends Error {}
 
+/** The remote update succeeded, but local changes must be restored manually. */
+export class PullRestoreConflictError extends Error {}
+
 export class GitService {
   // Linked worktrees share their stash reflog. Serialize our stash mutations
   // across services as well as across panels within one repository.
@@ -576,6 +579,29 @@ export class GitService {
     return commits;
   }
 
+  /** Read the one changed path attached to each `git log --follow --name-status` entry. */
+  private _parseFollowedFileEntries(raw: string): Array<{ hash: string; path?: string; oldPath?: string }> {
+    const entries: Array<{ hash: string; path?: string; oldPath?: string }> = [];
+    let current: (typeof entries)[number] | undefined;
+    for (const line of raw.split('\n')) {
+      if (line.includes('\x00')) {
+        const hash = line.split('\x00', 1)[0];
+        if (/^[0-9a-f]{40}$/i.test(hash)) {
+          current = { hash };
+          entries.push(current);
+        }
+        continue;
+      }
+      if (!current || !/^[ACDMRTUXB][0-9]*\t/.test(line)) continue;
+      const parts = line.split('\t');
+      current.path = parts[parts.length - 1];
+      if ((parts[0].startsWith('R') || parts[0].startsWith('C')) && parts.length >= 3) {
+        current.oldPath = parts[1];
+      }
+    }
+    return entries;
+  }
+
   /** A single commit as a full `CommitNode` (including `refs`, unlike `getCommitMeta`) — works for root commits too, unlike `getCommitsBetween(hash~1, hash)` which has no base to diff against. */
   async getCommitNode(hash: string): Promise<CommitNode | null> {
     const raw = await this.git.raw([
@@ -632,22 +658,24 @@ export class GitService {
     if (opts?.filterFilePath) {
       // One literal path keeps Git's filtering and rename tracking in the paged query.
       // Names containing '*', '[' or ':' must not become pathspec patterns.
-      args.push('--follow', '--', `:(literal)${opts.filterFilePath}`);
+      args.push('--follow', '--name-status', '--', `:(literal)${opts.filterFilePath}`);
     }
     const hashPrefix = isHashSearch ? opts!.filterText!.trim().toLowerCase() : null;
     let commits: CommitNode[];
+    let followedFileEntries: Array<{ hash: string; path?: string; oldPath?: string }> = [];
     if (opts?.filterFilePath && filterArgs.length > 0) {
       // Git only follows a rename when the rename commit passes its log filters.
       // Walk the file first, then let Git apply its normal regexp/date filters to
       // those hashes. Small chunks bound argv/output, and stop once the page is full.
       const hashesRaw = await this.git.raw([
-        'log', '--date-order', '--follow', '--format=%H', ...revisionArgs,
+        'log', '--date-order', '--follow', '--name-status', '--format=%H%x00', ...revisionArgs,
         // --after is a traversal cutoff and is ignored by --no-walk. Applying
         // the lower bound here only drops ancestors too old to match the query.
         ...(opts.filterDateFrom ? [`--after=${opts.filterDateFrom}`] : []),
         '--', `:(literal)${opts.filterFilePath}`,
       ]);
-      const hashes = hashesRaw.trim().split('\n').filter(Boolean);
+      followedFileEntries = this._parseFollowedFileEntries(hashesRaw);
+      const hashes = followedFileEntries.map(entry => entry.hash);
       const matches: CommitNode[] = [];
       const needed = isHashSearch ? 50000 : skip + limit;
       for (let i = 0; i < hashes.length && matches.length < needed; i += 500) {
@@ -656,9 +684,19 @@ export class GitService {
       }
       commits = isHashSearch ? matches.slice(0, needed) : matches.slice(skip, needed);
     } else {
-      commits = this._parseLogOutput(await this.git.raw(args));
+      const raw = await this.git.raw(args);
+      commits = this._parseLogOutput(raw);
+      if (opts?.filterFilePath) followedFileEntries = this._parseFollowedFileEntries(raw);
     }
     if (hashPrefix) commits = commits.filter(c => c.hash.toLowerCase().startsWith(hashPrefix));
+    if (followedFileEntries.length > 0) {
+      const pathsByHash = new Map(followedFileEntries.map(entry => [entry.hash, entry]));
+      for (const commit of commits) {
+        const entry = pathsByHash.get(commit.hash);
+        if (entry?.path) commit.historyFilePath = entry.path;
+        if (entry?.oldPath) commit.historyOldPath = entry.oldPath;
+      }
+    }
 
     // Mark unpushed commits: hashes ahead of the remote tracking branch.
     // 'all' means there is no upstream — every commit on this branch is local.
@@ -781,7 +819,7 @@ export class GitService {
     return result;
   }
 
-  async getCommitFiles(hash: string, knownParents?: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
+  async getCommitFiles(hash: string, knownParents?: string[], filePath?: string, oldPath?: string): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
     // For merge commits, diff-tree uses combined diff and omits most files.
     // Diff against first parent instead to get the full file list.
     let parents = knownParents;
@@ -791,13 +829,17 @@ export class GitService {
     }
     const isMerge = parents.length >= 2;
     const isRoot  = parents.length === 0;
+    const pathArgs = filePath
+      ? ['--', ...[...new Set([filePath, oldPath].filter((p): p is string => !!p))].map(p => `:(literal)${p}`)]
+      : [];
+    const renameArgs = filePath ? ['--find-renames'] : [];
 
     const baseArgs = isMerge
-      ? ['diff', '--name-status', parents[0], hash]
-      : ['diff-tree', '--no-commit-id', '-r', '--name-status', ...(isRoot ? ['--root'] : []), hash];
+      ? ['diff', '--name-status', ...renameArgs, parents[0], hash, ...pathArgs]
+      : ['diff-tree', '--no-commit-id', '-r', '--name-status', ...renameArgs, ...(isRoot ? ['--root'] : []), hash, ...pathArgs];
     const numArgs = isMerge
-      ? ['diff', '--numstat', parents[0], hash]
-      : ['diff-tree', '--no-commit-id', '-r', '--numstat', ...(isRoot ? ['--root'] : []), hash];
+      ? ['diff', '--numstat', ...renameArgs, parents[0], hash, ...pathArgs]
+      : ['diff-tree', '--no-commit-id', '-r', '--numstat', ...renameArgs, ...(isRoot ? ['--root'] : []), hash, ...pathArgs];
 
     const [nameStatus, numStat] = await Promise.all([
       this.git.raw(baseArgs),
@@ -826,7 +868,7 @@ export class GitService {
       const s = stats.get(filePath);
       files.push({ status: statusCode, path: filePath, added: s?.added, removed: s?.removed, ...(oldPath ? { oldPath } : {}) });
     }
-    return files;
+    return filePath ? files.filter(file => file.path === filePath) : files;
   }
 
   async getFileHistory(filePath: string, limit = 2000): Promise<Array<{
@@ -926,18 +968,21 @@ export class GitService {
     return oldest && newest ? this._getFilesBetweenRefs(`${oldest}~1`, newest) : [];
   }
 
-  async getFilesBetween(hashes: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
+  async getFilesBetween(hashes: string[], filePaths?: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
     const ordered = await this._sortHashesOldestFirst(hashes);
     const oldest = ordered[0];
     const newest = ordered[ordered.length - 1];
-    return oldest && newest ? this._getFilesBetweenRefs(oldest, newest) : [];
+    return oldest && newest ? this._getFilesBetweenRefs(oldest, newest, filePaths) : [];
   }
 
-  private async _getFilesBetweenRefs(base: string, newest: string): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
+  private async _getFilesBetweenRefs(base: string, newest: string, filePaths?: string[]): Promise<Array<{ path: string; status: string; added?: number; removed?: number; oldPath?: string }>> {
     try {
+      const paths = filePaths?.filter(Boolean);
+      const diffArgs = paths?.length ? ['--find-renames'] : [];
+      const pathArgs = paths?.length ? ['--', ...paths.map(p => `:(literal)${p}`)] : [];
       const [nameStatus, numStat] = await Promise.all([
-        this.git.raw(['diff', '--name-status', base, newest]),
-        this.git.raw(['diff', '--numstat', base, newest]),
+        this.git.raw(['diff', '--name-status', ...diffArgs, base, newest, ...pathArgs]),
+        this.git.raw(['diff', '--numstat', ...diffArgs, base, newest, ...pathArgs]),
       ]);
       const stats = new Map<string, { added: number; removed: number }>();
       for (const line of numStat.trim().split('\n')) {
@@ -960,7 +1005,7 @@ export class GitService {
         const s = stats.get(filePath);
         files.push({ status: statusCode, path: filePath, added: s?.added, removed: s?.removed, ...(oldPath ? { oldPath } : {}) });
       }
-      return files;
+      return paths?.length ? files.filter(file => paths.includes(file.path)) : files;
     } catch { return []; }
   }
 
@@ -1711,7 +1756,11 @@ export class GitService {
 
     // A unique marker identifies our stash even if another worktree pushes a
     // stash meanwhile. Restore by immutable hash, never by stash@{0}.
-    const marker = `GitCharm: local changes before update (${randomUUID()})`;
+    const date = new Intl.DateTimeFormat(vscode.env.language, {
+      year: 'numeric', month: '2-digit', day: '2-digit',
+      hour: '2-digit', minute: '2-digit', second: '2-digit', hour12: false,
+    }).format(new Date());
+    const marker = `GitCharm update ${date} (${randomUUID()})`;
     try {
       await this.git.raw(['stash', 'push', '--include-untracked', '-m', marker]);
     } catch (error) {
@@ -1766,13 +1815,26 @@ export class GitService {
     }
 
     try {
+      await this.checkPullStashCanApply(stashHash);
+    } catch (error) {
+      const message = vscode.l10n.t(
+        'Pull completed, but local changes conflict with the update or could not be safely checked. Stash {0} was kept; apply its files manually from the Stash tab. {1}',
+        stashHash.slice(0, 12), formatGitError(error, 1),
+      );
+      logWarn(`pull-auto-stash:${this.repoId}`, message, getRawErrorDetail(error));
+      throw new PullRestoreConflictError(message);
+    }
+
+    try {
       // --index preserves the staged/unstaged split as well as file contents.
       await this.git.raw(['stash', 'apply', '--index', stashHash]);
     } catch (error) {
-      throw this.pullAutoStashError(vscode.l10n.t(
-        'Update completed, but restoring local changes failed. Recovery stash {0} was kept; resolve conflicts or recover it from the Stash tab. {1}',
+      const message = vscode.l10n.t(
+        'Pull completed, but restoring local changes caused conflicts. Stash {0} was kept; resolve any partially applied files before applying files manually from the Stash tab. {1}',
         stashHash.slice(0, 12), formatGitError(error, 1),
-      ), error);
+      );
+      logError(`pull-auto-stash:${this.repoId}`, message, getRawErrorDetail(error));
+      throw new PullRestoreConflictError(message);
     }
 
     try {
@@ -1796,6 +1858,21 @@ export class GitService {
   private async findPullStash(marker: string): Promise<string | undefined> {
     const entries = await this.git.raw(['stash', 'list', '--format=%H%x00%gs']);
     return entries.split('\n').find(entry => entry.endsWith(`: ${marker}`))?.split('\0')[0];
+  }
+
+  /** Check the tracked three-way merge and untracked collisions without changing the worktree. */
+  private async checkPullStashCanApply(stashHash: string): Promise<void> {
+    if (!await this.canRestorePullStash()) {
+      throw new Error(vscode.l10n.t('The repository has unresolved changes after the pull.'));
+    }
+    const base = (await this.git.raw(['rev-parse', `${stashHash}^1`])).trim();
+    await this.git.raw(['merge-tree', '--write-tree', `--merge-base=${base}`, 'HEAD', stashHash]);
+    const untracked = await this.git.raw(['ls-tree', '-rz', '--name-only', `${stashHash}^3`]).catch(() => '');
+    for (const filePath of untracked.split('\0').filter(Boolean)) {
+      if (fs.existsSync(path.join(this.rootPath, filePath))) {
+        throw new Error(vscode.l10n.t('The pulled changes already contain "{0}".', filePath));
+      }
+    }
   }
 
   private async canRestorePullStash(): Promise<boolean> {
@@ -2182,18 +2259,20 @@ export class GitService {
     await this.git.raw(['rebase', '--onto', `${hash}^`, hash]);
   }
 
-  /** Only rewrite a clean, unpublished, linear prefix of HEAD. */
+  /** Only rewrite an unpublished, linear prefix of HEAD without mixing in staged changes. */
   async validateSquashSelection(hashes: string[]): Promise<string[]> {
     if (hashes.length < 2 || new Set(hashes).size !== hashes.length) {
       throw new Error(vscode.l10n.t('Select at least two consecutive commits from HEAD to squash.'));
     }
-    const [branch, dirty, history] = await Promise.all([
+    const [branch, stagedChanges, unmergedEntries, history] = await Promise.all([
       this.git.raw(['symbolic-ref', '-q', '--short', 'HEAD']).catch(() => ''),
-      this.git.raw(['status', '--porcelain', '-z']),
+      this.git.raw(['diff', '--cached', '--name-only', '-z']),
+      this.git.raw(['ls-files', '--unmerged', '-z']),
       this.git.raw(['rev-list', '--parents', `--max-count=${hashes.length}`, 'HEAD']),
     ]);
     if (!branch.trim()) throw new Error(vscode.l10n.t('Checkout a branch before squashing commits.'));
-    if (dirty) throw new Error(vscode.l10n.t('Commit or stash working tree changes before squashing commits.'));
+    if (unmergedEntries) throw new Error(vscode.l10n.t('Resolve conflicts before squashing commits.'));
+    if (stagedChanges) throw new Error(vscode.l10n.t('Commit, unstage, or stash staged changes before squashing commits.'));
     const rows = history.trim().split('\n').map(row => row.split(' '));
     const selected = new Set(hashes);
     if (rows.length !== hashes.length || rows.some(row => row.length !== 2 || !selected.has(row[0]))) {
@@ -2438,7 +2517,7 @@ export class GitService {
       const files: Array<{ path: string; status: string; added?: number; removed?: number }> = [];
       try {
         const stats = new Map<string, { added: number; removed: number }>();
-        const numstatRaw = await this.git.raw(['stash', 'show', '--numstat', hash]).catch(() => '');
+        const numstatRaw = await this.git.raw(['stash', 'show', '--numstat', '--no-renames', hash]).catch(() => '');
         for (const line of numstatRaw.trim().split('\n')) {
           const parts = line.split('\t');
           if (parts.length < 3) continue;
@@ -2448,7 +2527,7 @@ export class GitService {
           if (path && !isNaN(added) && !isNaN(removed)) stats.set(path, { added, removed });
         }
 
-        const fileRaw = await this.git.raw(['stash', 'show', '--name-status', hash]);
+        const fileRaw = await this.git.raw(['stash', 'show', '--name-status', '--no-renames', hash]);
         for (const fileLine of fileRaw.trim().split('\n')) {
           if (!fileLine.trim()) continue;
           const fileParts = fileLine.split('\t');
@@ -2539,6 +2618,45 @@ export class GitService {
     await this.withStashMutation(async () => {
       const stash = await this.resolveStash(stashRef);
       await this.git.raw(['stash', 'apply', stash.hash]);
+    }, true);
+  }
+
+  /** Apply one file's complete stashed content as an unstaged change. Keep the stash. */
+  async stashApplyFile(stashRef: string, filePath: string): Promise<void> {
+    await this.withStashMutation(async () => {
+      const { hash } = await this.resolveStash(stashRef);
+      const literalPath = `:(literal)${filePath}`;
+      const base = (await this.git.raw(['rev-parse', `${hash}^1`])).trim();
+      const tracked = await this.git.raw(['diff', '--name-only', '--no-renames', '-z', base, hash]);
+      const untracked = await this.git.raw(['ls-tree', '-rz', '--name-only', `${hash}^3`]).catch(() => '');
+      const isTracked = tracked.split('\0').includes(filePath);
+      const isUntracked = untracked.split('\0').includes(filePath);
+      if (!isTracked && !isUntracked) {
+        throw new Error(vscode.l10n.t('This file is not in the selected stash. Refresh the Stash tab and retry.'));
+      }
+      const dirty = await this.git.raw(['status', '--porcelain', '--untracked-files=all', '--', literalPath]);
+      if (dirty.trim()) {
+        throw new Error(vscode.l10n.t('This file already has local changes. Resolve or save them before applying the stashed file.'));
+      }
+      if (isUntracked) {
+        if (fs.existsSync(path.join(this.rootPath, filePath))) {
+          throw new Error(vscode.l10n.t('This file already exists. Move it before applying the stashed file.'));
+        }
+        await this.git.raw(['restore', `--source=${hash}^3`, '--worktree', '--', literalPath]);
+        return;
+      }
+
+      const patch = await this.git.raw(['diff', '--binary', '--no-renames', base, hash, '--', literalPath]);
+      const tempDir = fs.mkdtempSync(path.join(os.tmpdir(), 'gitcharm-stash-file-'));
+      const patchPath = path.join(tempDir, 'change.patch');
+      try {
+        fs.writeFileSync(patchPath, patch);
+        await this.git.raw(['apply', '--3way', '--binary', patchPath]);
+        // git apply --3way updates the index; single-file recovery belongs in Changes.
+        await this.git.raw(['restore', '--staged', '--', literalPath]);
+      } finally {
+        fs.rmSync(tempDir, { recursive: true, force: true });
+      }
     }, true);
   }
 

@@ -54,6 +54,9 @@ export interface CommitNode {
   committerDate: string;
   parents: string[];
   refs: string[];
+  /** Path of the file in this commit when the log follows a file across renames. */
+  historyFilePath?: string;
+  historyOldPath?: string;
   unpushed?: boolean;
   incoming?: boolean;
   lane?: number;
